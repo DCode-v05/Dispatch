@@ -1,0 +1,33 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "user-service"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["user-service:3000"]
+
+  - job_name: "chat-service"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["chat-service:3000"]
+
+  - job_name: "message-service"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["message-service:3000"]
+
+  - job_name: "notification-service"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["notification-service:3000"]
+
+  - job_name: "presence-service"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["presence-service:3000"]

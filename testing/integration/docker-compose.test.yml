@@ -1,0 +1,35 @@
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: testdb
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  mongodb-test:
+    image: mongo:7
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: testuser
+      MONGO_INITDB_ROOT_PASSWORD: testpass
+    ports:
+      - "27018:27017"
+    tmpfs:
+      - /data/db
+
+  redis-test:
+    image: redis:7-alpine
+    command: redis-server --requirepass testpass
+    ports:
+      - "6380:6379"
+
+  rabbitmq-test:
+    image: rabbitmq:3.13-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: testuser
+      RABBITMQ_DEFAULT_PASS: testpass
+    ports:
+      - "5673:5672"

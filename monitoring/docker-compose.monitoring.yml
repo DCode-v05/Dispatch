@@ -1,0 +1,40 @@
+services:
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: chat-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+    networks:
+      - chat-network
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: chat-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3100:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - chat-network
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  chat-network:
+    external: true
+    name: project_chat-network

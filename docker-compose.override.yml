@@ -1,0 +1,60 @@
+services:
+  user-service:
+    build:
+      target: deps
+    command: npm run start:dev
+    volumes:
+      - ./services/user-service:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+
+  chat-service:
+    build:
+      target: deps
+    command: npm run start:dev
+    volumes:
+      - ./services/chat-service:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+
+  message-service:
+    build:
+      target: deps
+    command: npm run start:dev
+    volumes:
+      - ./services/message-service:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+
+  notification-service:
+    build:
+      target: deps
+    command: npm run start:dev
+    volumes:
+      - ./services/notification-service:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+
+  presence-service:
+    build:
+      target: deps
+    command: npm run start:dev
+    volumes:
+      - ./services/presence-service:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+
+  frontend:
+    build:
+      target: deps
+    command: npm run dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
