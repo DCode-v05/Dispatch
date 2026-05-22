@@ -6,4 +6,3 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
-// cd-test
