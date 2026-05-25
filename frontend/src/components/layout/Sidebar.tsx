@@ -348,7 +348,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
         {directChats.length > 0 && (
           <>
             <p className="px-3 pt-2 pb-1 font-mono text-[10px] uppercase tracking-[0.18em] font-semibold text-(--ink-subtle)">
-              Direct Messages
+              Direct Messages    
             </p>
             {directChats.map(renderRoomButton)}
           </>
