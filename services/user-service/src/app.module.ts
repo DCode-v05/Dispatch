@@ -22,7 +22,12 @@ import { RequestIdMiddleware } from './common/request-id.middleware';
       password: process.env.POSTGRES_PASSWORD,
       database: process.env.POSTGRES_DB,
       autoLoadEntities: true,
-      synchronize: process.env.NODE_ENV !== 'production',
+      // POSTGRES_SYNCHRONIZE=true can be set TEMPORARILY in production to let
+      // TypeORM auto-add new columns after an entity change. Unset it once the
+      // schema is in sync — leaving it on is risky (TypeORM can drop columns).
+      synchronize:
+        process.env.POSTGRES_SYNCHRONIZE === 'true' ||
+        process.env.NODE_ENV !== 'production',
       ssl:
         process.env.POSTGRES_SSL === 'true'
           ? { rejectUnauthorized: false }
