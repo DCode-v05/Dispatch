@@ -67,6 +67,10 @@
   --bubble-other: #FFFFFF;
   --bubble-other-ink: #14161F;
 
+  /* Always-dark brand surface (auth showcase, marketing panels) */
+  --brand-bg: #0B0D14;
+  --brand-bg-soft: #13162A;
+
   --grain-opacity: 0.025;
 }
 
@@ -97,6 +101,10 @@
 
   --bubble-other: #1F2440;
   --bubble-other-ink: #F1EBE0;
+
+  /* Brand surface stays dark in both themes */
+  --brand-bg: #0B0D14;
+  --brand-bg-soft: #13162A;
 
   --grain-opacity: 0;
 }

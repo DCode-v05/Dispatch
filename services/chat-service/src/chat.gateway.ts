@@ -32,9 +32,11 @@ const MAX_MESSAGE_LENGTH = 4000;
 function corsOrigin(): string | string[] | boolean {
   const v = process.env.FRONTEND_URL;
   if (!v) return process.env.NODE_ENV === 'production' ? false : true;
+  // Strip any trailing slashes — browsers send Origin without one, so a
+  // mismatched FRONTEND_URL like "https://app.x/" would silently reject WS.
   return v
     .split(',')
-    .map((s) => s.trim())
+    .map((s) => s.trim().replace(/\/+$/, ''))
     .filter(Boolean);
 }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chatStore';
 import { usePresenceStore } from '@/stores/presenceStore';
@@ -13,6 +13,20 @@ import {
 import api from '@/lib/api';
 import Sidebar from '@/components/layout/Sidebar';
 import { toast } from '@/stores/toastStore';
+import { playPing, unlockAudioOnFirstInteraction } from '@/lib/sound';
+import type { Room } from '@/types';
+
+interface IncomingMessage {
+  messageId?: string;
+  _id?: string;
+  id?: string;
+  roomId: string;
+  senderId: string;
+  content: string;
+  timestamp?: string;
+  createdAt?: string;
+  readBy?: string[];
+}
 
 export default function MainLayout({
   children,
@@ -21,20 +35,70 @@ export default function MainLayout({
 }) {
   const { isAuthenticated, user } = useAuthStore();
   const { setRooms, addMessage, setInvitations } = useChatStore();
-  const { setUserOnline, setUserOffline } = usePresenceStore();
+  const { setUserOnline, setUserOffline, setOnlineUsers } = usePresenceStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const windowFocusedRef = useRef(true);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const cleanup = unlockAudioOnFirstInteraction();
+    const onFocus = () => {
+      windowFocusedRef.current = true;
+    };
+    const onBlur = () => {
+      windowFocusedRef.current = false;
+    };
+    windowFocusedRef.current = document.hasFocus();
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      cleanup();
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    api
-      .get('/rooms')
-      .then(({ data }) => setRooms(data))
-      .catch(console.error);
-    api
-      .get('/invitations')
-      .then(({ data }) => setInvitations(data))
-      .catch(console.error);
+    /** Refetch rooms+invitations and re-seed presence — used on initial mount AND on socket reconnect. */
+    const refreshState = async () => {
+      try {
+        const [{ data: rooms }, { data: invitations }] = await Promise.all([
+          api.get<Room[]>('/rooms'),
+          api.get('/invitations'),
+        ]);
+        setRooms(rooms);
+        setInvitations(invitations);
+
+        // Collect every participant id (excluding self) and seed presence
+        const participantIds = new Set<string>();
+        for (const r of rooms ?? []) {
+          for (const p of r.participants ?? []) {
+            if (p && p !== user?.id) participantIds.add(p);
+          }
+        }
+        if (participantIds.size > 0) {
+          try {
+            const ids = Array.from(participantIds).join(',');
+            const { data } = await api.get<
+              Record<string, { isOnline: boolean }>
+            >(`/presence?ids=${encodeURIComponent(ids)}`);
+            const online: string[] = [];
+            for (const [id, status] of Object.entries(data ?? {})) {
+              if (status?.isOnline) online.push(id);
+            }
+            setOnlineUsers(online);
+          } catch (err) {
+            console.warn('presence seed failed', err);
+          }
+        }
+      } catch (err) {
+        console.error('failed to refresh state', err);
+      }
+    };
+
+    void refreshState();
 
     const chat = getChatSocket();
     const presence = getPresenceSocket();
@@ -44,42 +108,75 @@ export default function MainLayout({
     presence.connect();
     notifications.connect();
 
-    chat.on('new_message', (msg) => {
-      const normalized = { ...msg, id: msg.messageId || msg._id || msg.id };
-      addMessage(normalized.roomId, normalized, {
-        fromSelf: normalized.senderId === user?.id,
-      });
-    });
+    const onNewMessage = (msg: IncomingMessage) => {
+      const normalized = {
+        ...msg,
+        id: msg.messageId || msg._id || msg.id || `m_${Date.now()}`,
+        type: 'text' as const,
+        readBy: msg.readBy ?? [msg.senderId],
+        timestamp: msg.timestamp || msg.createdAt || new Date().toISOString(),
+      };
+      const fromSelf = normalized.senderId === user?.id;
+      addMessage(normalized.roomId, normalized, { fromSelf });
 
-    chat.on('room_created', () => {
-      api
-        .get('/rooms')
-        .then(({ data }) => setRooms(data))
-        .catch(console.error);
-      api
-        .get('/invitations')
-        .then(({ data }) => setInvitations(data))
-        .catch(console.error);
-    });
+      // Ping on inbound messages when room not actively visible
+      if (!fromSelf) {
+        const activeRoom = useChatStore.getState().activeRoomId;
+        const inActive = String(activeRoom) === String(normalized.roomId);
+        if (!inActive || !windowFocusedRef.current) {
+          playPing();
+        }
+      }
+    };
 
-    chat.on('messages_read', ({ roomId, userId }) => {
+    const onRoomCreated = () => {
+      void refreshState();
+    };
+
+    const onMessagesRead = ({ roomId, userId }: { roomId: string; userId: string }) => {
       useChatStore.getState().markMessagesAsRead(roomId, userId);
-    });
+    };
 
-    presence.on(
-      'presence_update',
-      (data: { userId: string; isOnline: boolean }) => {
-        if (data.isOnline) setUserOnline(data.userId);
-        else setUserOffline(data.userId);
-      },
-    );
+    const onPresenceUpdate = (data: { userId: string; isOnline: boolean }) => {
+      if (data.isOnline) setUserOnline(data.userId);
+      else setUserOffline(data.userId);
+    };
 
-    notifications.on('notification', (n: { type?: string; message?: string }) => {
-      if (n?.type === 'new_message') return; // already surfaced via the chat tab
-      if (n?.message) toast.info('New notification', n.message);
-    });
+    const onNotification = (n: { type?: string; message?: string }) => {
+      if (n?.type === 'new_message') return; // already surfaced via chat
+      if (n?.message) {
+        toast.info('New notification', n.message);
+        playPing();
+      }
+    };
+
+    const onChatReconnect = () => {
+      console.info('[chat] reconnected — refreshing state');
+      void refreshState();
+    };
+    const onPresenceReconnect = () => {
+      console.info('[presence] reconnected — re-seeding online users');
+      void refreshState();
+    };
+
+    chat.on('new_message', onNewMessage);
+    chat.on('room_created', onRoomCreated);
+    chat.on('messages_read', onMessagesRead);
+    chat.io.on('reconnect', onChatReconnect);
+
+    presence.on('presence_update', onPresenceUpdate);
+    presence.io.on('reconnect', onPresenceReconnect);
+
+    notifications.on('notification', onNotification);
 
     return () => {
+      chat.off('new_message', onNewMessage);
+      chat.off('room_created', onRoomCreated);
+      chat.off('messages_read', onMessagesRead);
+      chat.io.off('reconnect', onChatReconnect);
+      presence.off('presence_update', onPresenceUpdate);
+      presence.io.off('reconnect', onPresenceReconnect);
+      notifications.off('notification', onNotification);
       disconnectAll();
     };
   }, [
@@ -89,6 +186,7 @@ export default function MainLayout({
     addMessage,
     setUserOnline,
     setUserOffline,
+    setOnlineUsers,
     setInvitations,
   ]);
 

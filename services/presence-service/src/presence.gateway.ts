@@ -25,7 +25,7 @@ function corsOrigin(): string | string[] | boolean {
   if (!v) return process.env.NODE_ENV === 'production' ? false : true;
   return v
     .split(',')
-    .map((s) => s.trim())
+    .map((s) => s.trim().replace(/\/+$/, ''))
     .filter(Boolean);
 }
 

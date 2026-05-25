@@ -4,7 +4,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="min-h-screen flex relative overflow-hidden bg-(--canvas)">
       {/* Decorative side — visible on lg+ */}
-      <div className="hidden lg:flex relative w-1/2 flex-col justify-between p-12 overflow-hidden bg-(--ink)">
+      <div className="hidden lg:flex relative w-1/2 flex-col justify-between p-12 overflow-hidden bg-(--brand-bg)">
         {/* Layered gradient accent */}
         <div
           aria-hidden
@@ -26,7 +26,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 
         <div className="relative z-10 flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-(--accent) flex items-center justify-center shadow-pop">
-            <svg viewBox="0 0 24 24" className="h-5 w-5 text-(--accent-ink)" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <svg viewBox="0 0 24 24" className="h-5 w-5 text-white" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
           </div>

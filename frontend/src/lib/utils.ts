@@ -2,7 +2,14 @@ export function formatTime(dateStr: string): string {
   if (!dateStr) return '';
   const date = new Date(dateStr);
   if (isNaN(date.getTime())) return '';
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  // Force a stable 12-hour format with lowercase am/pm regardless of browser locale
+  return date
+    .toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    })
+    .toLowerCase();
 }
 
 export function formatDate(dateStr: string): string {

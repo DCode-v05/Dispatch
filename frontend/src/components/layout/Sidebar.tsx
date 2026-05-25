@@ -398,7 +398,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
             <p className="text-sm font-semibold text-(--ink) truncate">
               {user?.username ?? 'You'}
             </p>
-            <p className="font-mono text-[10px] uppercase tracking-wider text-(--ink-subtle) truncate">
+            <p className="text-[11px] text-(--ink-subtle) truncate lowercase">
               {user?.email}
             </p>
           </div>
