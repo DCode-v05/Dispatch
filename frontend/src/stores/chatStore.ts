@@ -35,7 +35,7 @@ function updateRoomMetaFromMessage(rooms: Room[], roomId: string, msg: Message):
   });
 }
 
-export const useChatStore = create<ChatState>((set, get) => ({
+export const useChatStore = create<ChatState>((set) => ({
   rooms: [],
   activeRoomId: null,
   messages: {},

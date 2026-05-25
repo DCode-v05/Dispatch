@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/unbound-method, @typescript-eslint/require-await */
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
@@ -6,9 +7,7 @@ import { AuthService } from './auth.service';
 import { UserService } from '../user/user.service';
 import { User } from '../user/user.entity';
 
-const fixtureUser = (
-  overrides: Partial<User> = {},
-): User => ({
+const fixtureUser = (overrides: Partial<User> = {}): User => ({
   id: 'user-1',
   email: 'alice@example.com',
   username: 'alice',

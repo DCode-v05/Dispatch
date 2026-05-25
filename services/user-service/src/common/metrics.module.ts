@@ -32,14 +32,20 @@ const httpRequestsTotal = new client.Counter({
   registers: [register],
 });
 
-function metricsMiddleware(req: Request, res: Response, next: NextFunction): void {
+function metricsMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
   const start = process.hrtime.bigint();
   res.on('finish', () => {
     try {
       const route =
         (req.route && typeof req.route === 'object' && 'path' in req.route
           ? (req.route as { path: string }).path
-          : undefined) ?? req.path ?? 'unknown';
+          : undefined) ??
+        req.path ??
+        'unknown';
       // Skip /metrics from its own metrics to avoid cardinality noise
       if (route === '/metrics') return;
       const labels = {

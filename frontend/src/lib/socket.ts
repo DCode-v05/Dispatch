@@ -34,11 +34,9 @@ let notificationSocket: Socket | null = null;
 
 function attachLifecycleLogging(name: string, socket: Socket): Socket {
   socket.on('connect_error', (err) => {
-    // eslint-disable-next-line no-console
     console.warn(`[${name}] connect_error:`, err.message);
   });
   socket.on('unauthorized', () => {
-    // eslint-disable-next-line no-console
     console.warn(`[${name}] server marked socket unauthorized — disconnecting`);
     socket.disconnect();
   });

@@ -23,7 +23,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
     activeRoomId,
     invitations,
     setInvitations,
-    setRooms,
     upsertRoom,
     messages,
     unread,

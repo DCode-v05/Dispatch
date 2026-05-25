@@ -20,7 +20,7 @@ export default function RoomsPage() {
   const [name, setName] = useState('');
   const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
-  const { rooms, setRooms, upsertRoom } = useChatStore();
+  const { rooms, upsertRoom } = useChatStore();
   const router = useRouter();
 
   const directChatUserIds = rooms
@@ -176,11 +176,6 @@ export default function RoomsPage() {
           )}
         </div>
 
-        {/* Reset rooms helper (keeps existing call signature working) */}
-        <div className="sr-only" aria-hidden>
-          {rooms.length}
-          <span onClick={() => setRooms(rooms)} />
-        </div>
       </div>
     </div>
   );

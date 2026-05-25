@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/require-await */
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -29,14 +30,16 @@ function makeFakeUserRepo() {
   const byEmail = new Map<string, string>();
 
   return {
-    findOne: jest.fn(async ({ where }: { where: { id?: string; email?: string } }) => {
-      if (where.id) return rows.get(where.id) ?? null;
-      if (where.email) {
-        const id = byEmail.get(where.email);
-        return id ? (rows.get(id) ?? null) : null;
-      }
-      return null;
-    }),
+    findOne: jest.fn(
+      async ({ where }: { where: { id?: string; email?: string } }) => {
+        if (where.id) return rows.get(where.id) ?? null;
+        if (where.email) {
+          const id = byEmail.get(where.email);
+          return id ? (rows.get(id) ?? null) : null;
+        }
+        return null;
+      },
+    ),
     find: jest.fn(async () => Array.from(rows.values())),
     create: jest.fn((data: Partial<User>) => ({ ...data })),
     save: jest.fn(async (entity: Partial<User>) => {
@@ -120,20 +123,20 @@ describe('Auth flow (e2e)', () => {
   });
 
   it('POST /auth/register rejects a weak password', async () => {
-    const res = await request(app.getHttpServer())
-      .post('/auth/register')
-      .send({ email: 'alice@example.com', username: 'alice', password: 'short' });
+    const res = await request(app.getHttpServer()).post('/auth/register').send({
+      email: 'alice@example.com',
+      username: 'alice',
+      password: 'short',
+    });
     expect(res.status).toBe(400);
   });
 
   it('POST /auth/register rejects bad username characters', async () => {
-    const res = await request(app.getHttpServer())
-      .post('/auth/register')
-      .send({
-        email: 'alice@example.com',
-        username: 'al ice!',
-        password: 'Aliceabc1',
-      });
+    const res = await request(app.getHttpServer()).post('/auth/register').send({
+      email: 'alice@example.com',
+      username: 'al ice!',
+      password: 'Aliceabc1',
+    });
     expect(res.status).toBe(400);
   });
 
@@ -176,13 +179,11 @@ describe('Auth flow (e2e)', () => {
   });
 
   it('POST /auth/register rejects duplicate email', async () => {
-    const res = await request(app.getHttpServer())
-      .post('/auth/register')
-      .send({
-        email: 'bob@example.com',
-        username: 'bob2',
-        password: 'Bobpass123',
-      });
+    const res = await request(app.getHttpServer()).post('/auth/register').send({
+      email: 'bob@example.com',
+      username: 'bob2',
+      password: 'Bobpass123',
+    });
     expect(res.status).toBe(409);
   });
 

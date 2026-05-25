@@ -26,7 +26,10 @@ export class AuthController {
     status: 200,
     description: 'Returns { accessToken, user }',
   })
-  @ApiResponse({ status: 401, description: 'Invalid credentials or account locked' })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid credentials or account locked',
+  })
   @ApiResponse({ status: 429, description: 'Too many login attempts' })
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
