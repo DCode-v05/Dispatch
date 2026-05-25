@@ -1,11 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chatStore';
 import { Room } from '@/types';
 import Avatar from '@/components/ui/Avatar';
+import Modal from '@/components/ui/Modal';
+import ThemeToggle from '@/components/ui/ThemeToggle';
+import { formatRelative, truncate } from '@/lib/utils';
+import { toast } from '@/stores/toastStore';
 import api from '@/lib/api';
 
 interface SidebarProps {
@@ -13,26 +17,94 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ onClose }: SidebarProps) {
-  const { user } = useAuthStore();
-  const { rooms, activeRoomId, invitations, setInvitations, setRooms } = useChatStore();
-  // const pathname = usePathname();
+  const { user, logout } = useAuthStore();
+  const {
+    rooms,
+    activeRoomId,
+    invitations,
+    setInvitations,
+    setRooms,
+    upsertRoom,
+    messages,
+    unread,
+  } = useChatStore();
   const router = useRouter();
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [isInviting, setIsInviting] = useState(false);
-
-  const directChats = rooms.filter(r => r.type === 'direct');
-  const groupChats = rooms.filter(r => r.type === 'group');
+  const [query, setQuery] = useState('');
 
   const getRoomDisplayName = (room: Room) => {
     if (room.type === 'direct' && room.participantNames) {
-      const otherId = room.participants.find((id: string) => id !== user?.id);
+      const otherId = room.participants.find((id) => id !== user?.id);
       if (otherId && room.participantNames[otherId]) {
         return room.participantNames[otherId];
       }
     }
     return room.name;
   };
+
+  const lastMessageFor = (room: Room) => {
+    const id = String(room._id || room.id);
+    const stream = messages[id];
+    if (stream && stream.length > 0) {
+      const last = stream[stream.length - 1];
+      const isMine = last.senderId === user?.id;
+      const senderLabel = isMine
+        ? 'You'
+        : room.participantNames?.[last.senderId] ?? '';
+      const prefix = room.type === 'group' && senderLabel ? `${senderLabel}: ` : isMine ? 'You: ' : '';
+      return {
+        text: prefix + last.content,
+        at: last.timestamp || last.createdAt,
+      };
+    }
+    if (room.lastMessageContent) {
+      const isMine = room.lastMessageSenderId === user?.id;
+      const senderLabel =
+        isMine
+          ? 'You'
+          : room.lastMessageSenderId
+            ? (room.participantNames?.[room.lastMessageSenderId] ?? '')
+            : '';
+      const prefix = room.type === 'group' && senderLabel ? `${senderLabel}: ` : isMine ? 'You: ' : '';
+      return {
+        text: prefix + room.lastMessageContent,
+        at: room.lastMessageAt,
+      };
+    }
+    return null;
+  };
+
+  const filterRooms = (list: Room[]) => {
+    if (!query.trim()) return list;
+    const q = query.toLowerCase();
+    return list.filter((r) => {
+      const name = getRoomDisplayName(r).toLowerCase();
+      if (name.includes(q)) return true;
+      const last = lastMessageFor(r);
+      return last?.text.toLowerCase().includes(q);
+    });
+  };
+
+  const sortByActivity = (list: Room[]) =>
+    [...list].sort((a, b) => {
+      const ta = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+      const tb = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+      return tb - ta;
+    });
+
+  const directChats = useMemo(
+    () => sortByActivity(filterRooms(rooms.filter((r) => r.type === 'direct'))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rooms, query, user?.id, messages],
+  );
+  const groupChats = useMemo(
+    () => sortByActivity(filterRooms(rooms.filter((r) => r.type === 'group'))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rooms, query, user?.id, messages],
+  );
 
   const navigateTo = (path: string) => {
     router.push(path);
@@ -47,10 +119,12 @@ export default function Sidebar({ onClose }: SidebarProps) {
       await api.post('/invitations', { email: inviteEmail });
       setInviteEmail('');
       setShowInviteModal(false);
-      alert('Invitation sent successfully!');
+      toast.success('Invitation sent', `${inviteEmail} will see it on next login.`);
     } catch (err) {
       console.error(err);
-      alert('Failed to send invitation');
+      const msg = (err as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message;
+      toast.error('Could not send invitation', typeof msg === 'string' ? msg : undefined);
     } finally {
       setIsInviting(false);
     }
@@ -59,95 +133,211 @@ export default function Sidebar({ onClose }: SidebarProps) {
   const handleAcceptInvite = async (id: string) => {
     try {
       const { data: newRoom } = await api.post(`/invitations/${id}/accept`);
-      setInvitations(invitations.filter(i => i._id !== id));
-      setRooms([...rooms, newRoom]);
+      setInvitations(invitations.filter((i) => i._id !== id));
+      upsertRoom(newRoom);
       navigateTo(`/chat/${newRoom._id || newRoom.id}`);
     } catch (err) {
       console.error(err);
-      alert('Failed to accept invitation');
+      toast.error('Could not accept invitation');
     }
   };
 
   const handleRejectInvite = async (id: string) => {
     try {
       await api.post(`/invitations/${id}/reject`);
-      setInvitations(invitations.filter(i => i._id !== id));
+      setInvitations(invitations.filter((i) => i._id !== id));
+      toast.info('Invitation declined');
     } catch (err) {
       console.error(err);
-      alert('Failed to reject invitation');
+      toast.error('Could not decline invitation');
     }
   };
 
-  return (
-    <div className="h-full bg-slate-50 border-r border-slate-200 flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="p-6 bg-white border-b border-slate-200 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Avatar name={user?.username || '?'} size="sm" showStatus userId={user?.id} />
-          <h1 className="font-bold text-slate-900 text-xl tracking-tight hidden md:block">Messages</h1>
+  const renderRoomButton = (room: Room) => {
+    const id = String(room._id || room.id);
+    const isActive = String(activeRoomId) === id;
+    const last = lastMessageFor(room);
+    const unreadCount = unread[id] ?? 0;
+    const otherId =
+      room.type === 'direct'
+        ? room.participants.find((p) => p !== user?.id)
+        : undefined;
+
+    return (
+      <button
+        key={id}
+        onClick={() => navigateTo(`/chat/${id}`)}
+        className={`w-full text-left px-3 py-3 flex items-center gap-3 rounded-xl transition relative group ${
+          isActive
+            ? 'bg-(--accent-soft)'
+            : 'hover:bg-(--line-soft)'
+        }`}
+      >
+        {isActive && (
+          <span className="absolute left-0 top-3 bottom-3 w-0.5 rounded-r-full bg-(--accent)" />
+        )}
+        {room.type === 'direct' ? (
+          <Avatar
+            name={getRoomDisplayName(room)}
+            userId={otherId}
+            size="md"
+            showStatus
+          />
+        ) : (
+          <Avatar name={room.name} size="md" isGroup />
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex justify-between items-baseline gap-2">
+            <h3
+              className={`text-sm font-semibold truncate ${
+                isActive ? 'text-(--ink)' : 'text-(--ink)'
+              }`}
+            >
+              {getRoomDisplayName(room)}
+            </h3>
+            <span className="font-mono text-[10px] uppercase tracking-wider text-(--ink-subtle) shrink-0">
+              {last?.at ? formatRelative(last.at) : ''}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <p
+              className={`text-xs truncate flex-1 ${
+                unreadCount > 0
+                  ? 'font-semibold text-(--ink)'
+                  : 'text-(--ink-muted)'
+              }`}
+            >
+              {last
+                ? truncate(last.text, 50)
+                : room.type === 'group'
+                  ? `${room.participants.length} member${room.participants.length === 1 ? '' : 's'}`
+                  : 'No messages yet'}
+            </p>
+            {unreadCount > 0 && (
+              <span className="shrink-0 inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[10px] font-bold rounded-full bg-(--accent) text-(--accent-ink)">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </div>
         </div>
-        <div className="flex gap-1">
-          <button 
+      </button>
+    );
+  };
+
+  return (
+    <div className="h-full bg-(--surface) border-r border-(--line) flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="p-4 border-b border-(--line-soft) flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="h-9 w-9 rounded-xl bg-(--accent) flex items-center justify-center shrink-0">
+            <svg viewBox="0 0 24 24" className="h-5 w-5 text-(--accent-ink)" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+          </div>
+          <div className="min-w-0">
+            <h1 className="font-display text-base font-bold tracking-tight text-(--ink) truncate">
+              Dispatch
+            </h1>
+            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-(--ink-subtle) leading-none mt-0.5">
+              v1.0
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <ThemeToggle />
+          <button
             onClick={() => setShowInviteModal(true)}
-            className="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all duration-200"
-            title="Invite Person"
+            className="btn-ghost h-9 w-9"
+            title="Invite someone"
+            aria-label="Invite person"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+            <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
             </svg>
           </button>
-          <button 
+          <button
             onClick={() => navigateTo('/rooms')}
-            className="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all duration-200"
-            title="Create Group"
+            className="btn-ghost h-9 w-9"
+            title="New group chat"
+            aria-label="Create group"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
             </svg>
           </button>
         </div>
       </div>
 
       {/* Search */}
-      <div className="px-6 py-4">
-        <div className="relative group">
-          <input 
-            type="text" 
-            placeholder="Search conversations..."
-            className="w-full bg-slate-100 border-none rounded-xl py-2.5 pl-11 pr-4 text-sm font-medium text-slate-600 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all duration-200"
+      <div className="px-4 pt-3 pb-2">
+        <div className="relative">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search conversations…"
+            className="w-full bg-(--line-soft) border-0 rounded-xl py-2.5 pl-10 pr-4 text-sm font-medium text-(--ink) placeholder:text-(--ink-subtle) focus:bg-(--surface) focus:ring-2 focus:ring-(--accent)/30 outline-none transition"
           />
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 absolute left-3.5 top-2.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-(--ink-subtle)"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
         </div>
       </div>
 
       {/* Lists */}
-      <div className="flex-1 overflow-y-auto px-3 space-y-1">
-        {/* Invitations */}
+      <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-1">
         {invitations.length > 0 && (
-          <div className="mb-4 px-3">
-            <p className="py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pending ({invitations.length})</p>
+          <div className="mt-2 mb-3">
+            <p className="px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] font-semibold text-(--ink-subtle)">
+              Pending · {invitations.length}
+            </p>
             {invitations.map((invite) => (
-              <div key={invite._id} className="p-3 bg-indigo-50/50 rounded-xl border border-indigo-100/50 flex items-center justify-between mb-1">
-                <div className="flex items-center gap-3 truncate">
-                  <div className="w-10 h-10 bg-indigo-100 text-indigo-700 rounded-xl flex items-center justify-center text-xs font-bold shadow-sm">
-                    {invite.senderEmail[0].toUpperCase()}
-                  </div>
-                  <div className="truncate">
-                    <p className="text-sm font-bold text-slate-800 truncate">{invite.senderEmail}</p>
-                    <p className="text-[10px] font-medium text-indigo-600 uppercase tracking-tight">Sent an invite</p>
+              <div
+                key={invite._id}
+                className="px-3 py-3 mx-1 rounded-xl bg-(--accent-soft) border border-(--accent)/15 flex items-center justify-between gap-2 mb-1.5"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <Avatar name={invite.senderUsername || invite.senderEmail} size="sm" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-(--ink) truncate">
+                      {invite.senderUsername || invite.senderEmail}
+                    </p>
+                    <p className="text-[11px] text-(--ink-muted) truncate">
+                      Sent you an invitation
+                    </p>
                   </div>
                 </div>
-                <div className="flex gap-1.5">
-                  <button onClick={() => handleAcceptInvite(invite._id)} className="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 shadow-sm transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                <div className="flex gap-1 shrink-0">
+                  <button
+                    onClick={() => handleAcceptInvite(invite._id)}
+                    className="h-8 w-8 rounded-lg bg-(--accent) text-(--accent-ink) flex items-center justify-center hover:bg-(--accent-hover) transition"
+                    title="Accept"
+                  >
+                    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor">
+                      <path
+                        fillRule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clipRule="evenodd"
+                      />
                     </svg>
                   </button>
-                  <button onClick={() => handleRejectInvite(invite._id)} className="p-2 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  <button
+                    onClick={() => handleRejectInvite(invite._id)}
+                    className="h-8 w-8 rounded-lg bg-(--line-soft) text-(--ink-muted) hover:bg-(--line) hover:text-(--ink) flex items-center justify-center transition"
+                    title="Decline"
+                  >
+                    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor">
+                      <path
+                        fillRule="evenodd"
+                        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                        clipRule="evenodd"
+                      />
                     </svg>
                   </button>
                 </div>
@@ -156,154 +346,151 @@ export default function Sidebar({ onClose }: SidebarProps) {
           </div>
         )}
 
-        {/* Direct Chats */}
-        <p className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Recent Chats</p>
-        {directChats.map((room) => {
-          const id = String(room._id || room.id);
-          const isActive = String(activeRoomId) === id;
-          return (
-            <button
-              key={id}
-              onClick={() => navigateTo(`/chat/${id}`)}
-              className={`w-full text-left p-3.5 flex items-center gap-4 rounded-2xl transition-all duration-200 group relative ${
-                isActive ? 'bg-white shadow-md' : 'hover:bg-slate-100'
-              }`}
-            >
-              {isActive && <div className="absolute left-1.5 top-3.5 bottom-3.5 w-1 bg-indigo-500 rounded-full shadow-[0_0_8px_rgba(99,102,241,0.5)]"></div>}
-              <Avatar name={getRoomDisplayName(room)} size="md" />
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-baseline mb-1">
-                  <h3 className={`text-sm font-bold truncate transition-colors ${isActive ? 'text-slate-900' : 'text-slate-700'}`}>
-                    {getRoomDisplayName(room)}
-                  </h3>
-                  <span className={`text-[10px] font-bold ${isActive ? 'text-indigo-500' : 'text-slate-400'}`}>
-                    {room.lastMessageAt ? new Date(room.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                  </span>
-                </div>
-                <p className={`text-xs truncate font-medium transition-colors ${isActive ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Hey, how are you doing?
-                </p>
-              </div>
-            </button>
-          );
-        })}
+        {directChats.length > 0 && (
+          <>
+            <p className="px-3 pt-2 pb-1 font-mono text-[10px] uppercase tracking-[0.18em] font-semibold text-(--ink-subtle)">
+              Direct
+            </p>
+            {directChats.map(renderRoomButton)}
+          </>
+        )}
 
-        {/* Group Chats */}
         {groupChats.length > 0 && (
           <>
-            <p className="px-3 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Channels</p>
-            {groupChats.map((room) => {
-              const id = String(room._id || room.id);
-              const isActive = String(activeRoomId) === id;
-              return (
-                <button
-                  key={id}
-                  onClick={() => navigateTo(`/chat/${id}`)}
-                  className={`w-full text-left p-3.5 flex items-center gap-4 rounded-2xl transition-all duration-200 group ${
-                    isActive ? 'bg-white shadow-md' : 'hover:bg-slate-100'
-                  }`}
-                >
-                  <div className="w-12 h-12 bg-slate-200 text-slate-500 rounded-2xl flex items-center justify-center font-bold text-xl group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors">
-                    #
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-baseline mb-1">
-                      <h3 className={`text-sm font-bold truncate transition-colors ${isActive ? 'text-slate-900' : 'text-slate-700'}`}>{room.name}</h3>
-                      <span className="text-[10px] font-bold text-slate-400">
-                        {room.lastMessageAt ? new Date(room.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                      </span>
-                    </div>
-                    <p className="text-xs font-medium text-slate-400 truncate">{room.participants.length} participants</p>
-                  </div>
-                </button>
-              );
-            })}
+            <p className="px-3 pt-4 pb-1 font-mono text-[10px] uppercase tracking-[0.18em] font-semibold text-(--ink-subtle)">
+              Groups
+            </p>
+            {groupChats.map(renderRoomButton)}
           </>
+        )}
+
+        {directChats.length === 0 && groupChats.length === 0 && (
+          <div className="text-center py-10 px-6">
+            <div className="h-12 w-12 mx-auto rounded-2xl bg-(--line-soft) text-(--ink-muted) flex items-center justify-center mb-3">
+              <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" />
+              </svg>
+            </div>
+            <p className="text-sm font-semibold text-(--ink)">
+              {query ? 'No matches' : 'Nothing here yet'}
+            </p>
+            <p className="text-xs text-(--ink-muted) mt-1">
+              {query
+                ? 'Try a different search term.'
+                : 'Invite someone or start a group above.'}
+            </p>
+          </div>
         )}
       </div>
 
-      {/* User Footer */}
-      <div className="p-4 bg-white border-t border-slate-200 flex items-center gap-4">
-        <button 
+      {/* User footer */}
+      <div className="p-3 border-t border-(--line-soft) flex items-center gap-2">
+        <button
           onClick={() => navigateTo('/settings')}
-          className="flex-1 flex items-center gap-3 p-1.5 hover:bg-slate-50 rounded-xl transition-all duration-200 text-left truncate group"
+          className="flex-1 flex items-center gap-3 p-2 hover:bg-(--line-soft) rounded-xl transition text-left min-w-0"
         >
-          <div className="relative">
-            <Avatar name={user?.username || '?'} size="sm" />
-            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></div>
-          </div>
-          <div className="truncate">
-            <p className="text-sm font-bold text-slate-900 truncate group-hover:text-indigo-600 transition-colors">{user?.username}</p>
-            <p className="text-[10px] font-bold text-slate-400 truncate tracking-tight">{user?.email}</p>
+          <Avatar
+            name={user?.username || '?'}
+            userId={user?.id}
+            size="sm"
+            showStatus
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-(--ink) truncate">
+              {user?.username ?? 'You'}
+            </p>
+            <p className="font-mono text-[10px] uppercase tracking-wider text-(--ink-subtle) truncate">
+              {user?.email}
+            </p>
           </div>
         </button>
-        <button 
-          onClick={() => {
-            if (confirm('Are you sure you want to logout?')) {
-              useAuthStore.getState().logout();
-              router.push('/login');
-            }
-          }}
-          className="p-2.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all duration-200"
-          title="Logout"
+        <button
+          onClick={() => setShowLogoutModal(true)}
+          className="btn-ghost h-9 w-9 text-(--ink-subtle) hover:text-(--danger) hover:bg-(--danger-soft)"
+          title="Log out"
+          aria-label="Log out"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
           </svg>
         </button>
       </div>
 
-      {/* Invite Modal */}
-      {showInviteModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold text-gray-900">Start a new chat</h2>
-                <button onClick={() => setShowInviteModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <p className="text-sm text-gray-600 mb-6">Enter the email address of the person you&apos;d like to chat with. We&apos;ll send them an invitation.</p>
-              <form onSubmit={handleSendInvite}>
-                <div className="mb-6">
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Email Address</label>
-                  <input 
-                    type="email" 
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    placeholder="example@gmail.com"
-                    required
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-all"
-                  />
-                </div>
-                <div className="flex gap-3">
-                  <button 
-                    type="button" 
-                    onClick={() => setShowInviteModal(false)}
-                    className="flex-1 py-3 px-4 border border-gray-200 rounded-xl font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit" 
-                    disabled={isInviting}
-                    className="flex-1 py-3 px-4 bg-green-500 text-white rounded-xl font-semibold hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {isInviting ? (
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    ) : (
-                      'Send Invitation'
-                    )}
-                  </button>
-                </div>
-              </form>
-            </div>
+      {/* Invite modal */}
+      <Modal
+        isOpen={showInviteModal}
+        onClose={() => setShowInviteModal(false)}
+        title="Invite someone"
+        description="They'll see your invitation the next time they sign in."
+      >
+        <form onSubmit={handleSendInvite} className="space-y-5">
+          <div>
+            <label className="block font-mono text-[11px] uppercase tracking-wider font-medium text-(--ink-muted) mb-2">
+              Email address
+            </label>
+            <input
+              type="email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              placeholder="friend@example.com"
+              required
+              className="input-field"
+              autoFocus
+            />
           </div>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setShowInviteModal(false)}
+              className="btn-secondary flex-1"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isInviting}
+              className="btn-primary flex-1"
+            >
+              {isInviting ? (
+                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              ) : (
+                'Send invitation'
+              )}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Logout modal */}
+      <Modal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        title="Log out?"
+        description="You'll need to sign in again to access your messages."
+        size="sm"
+      >
+        <div className="flex gap-3 pt-1">
+          <button
+            type="button"
+            onClick={() => setShowLogoutModal(false)}
+            className="btn-secondary flex-1"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowLogoutModal(false);
+              logout();
+              router.push('/login');
+            }}
+            className="btn-primary flex-1"
+            style={{ background: 'var(--danger)' }}
+          >
+            Log out
+          </button>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }

@@ -1,7 +1,13 @@
 import { create } from 'zustand';
-import Cookies from 'js-cookie';
 import { jwtDecode } from 'jwt-decode';
 import type { User } from '@/types';
+import {
+  clearToken,
+  getToken,
+  isTokenExpired,
+  setToken,
+} from '@/lib/auth-token';
+import { disconnectAll } from '@/lib/socket';
 
 interface AuthState {
   user: User | null;
@@ -18,32 +24,40 @@ export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: false,
 
   login: (token: string, user: User) => {
-    Cookies.set('accessToken', token, { expires: 7 });
+    setToken(token, 7);
     set({ user, token, isAuthenticated: true });
   },
 
   logout: () => {
-    Cookies.remove('accessToken');
+    clearToken();
+    disconnectAll();
     set({ user: null, token: null, isAuthenticated: false });
   },
 
   hydrate: () => {
-    const token = Cookies.get('accessToken');
-    if (token) {
-      try {
-        const decoded = jwtDecode<{ sub: string; email: string; username?: string }>(token);
-        set({
-          token,
-          isAuthenticated: true,
-          user: { 
-            id: decoded.sub, 
-            email: decoded.email, 
-            username: decoded.username || decoded.email.split('@')[0] 
-          },
-        });
-      } catch {
-        Cookies.remove('accessToken');
-      }
+    const token = getToken();
+    if (!token) return;
+    if (isTokenExpired(token)) {
+      clearToken();
+      return;
+    }
+    try {
+      const decoded = jwtDecode<{
+        sub: string;
+        email: string;
+        username?: string;
+      }>(token);
+      set({
+        token,
+        isAuthenticated: true,
+        user: {
+          id: decoded.sub,
+          email: decoded.email,
+          username: decoded.username || decoded.email.split('@')[0],
+        },
+      });
+    } catch {
+      clearToken();
     }
   },
 }));

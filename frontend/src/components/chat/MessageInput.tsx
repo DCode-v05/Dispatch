@@ -1,28 +1,44 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { getChatSocket } from '@/lib/socket';
+import { toast } from '@/stores/toastStore';
 
 interface MessageInputProps {
   roomId: string;
 }
 
+const MAX_HEIGHT = 160;
+
 export default function MessageInput({ roomId }: MessageInputProps) {
   const [content, setContent] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const sendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!content.trim()) return;
-
-    const socket = getChatSocket();
-    socket.emit('send_message', { roomId, content: content.trim() });
-    setContent('');
+  const resize = (el: HTMLTextAreaElement) => {
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`;
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const sendMessage = () => {
+    const text = content.trim();
+    if (!text) return;
+    const socket = getChatSocket();
+    socket.emit('send_message', { roomId, content: text });
+    setContent('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    sendMessage();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage(e);
+      sendMessage();
     }
   };
 
@@ -31,63 +47,77 @@ export default function MessageInput({ roomId }: MessageInputProps) {
     socket.emit('typing', { roomId });
   };
 
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setContent(e.target.value);
+    resize(e.target);
+    handleTyping();
+  };
+
+  const hasContent = content.trim().length > 0;
+
   return (
-    <div className="flex items-center gap-4 py-2">
-      <div className="flex items-center gap-1">
-        <button 
-          type="button" 
-          onClick={() => alert('Emoji picker coming soon!')}
-          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all duration-200"
-          title="Emoji"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </button>
-        <button 
-          type="button" 
-          onClick={() => alert('File attachment coming soon!')}
-          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all duration-200"
-          title="Attach"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.414a4 4 0 00-5.656-5.656l-6.415 6.414a6 6 0 108.486 8.486L20.5 13" />
-          </svg>
-        </button>
-      </div>
-      
-      <form onSubmit={sendMessage} className="flex-1 flex gap-4">
-        <input
-          type="text"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onInput={handleTyping}
-          placeholder="Type a message..."
-          className="flex-1 bg-slate-100 border-none rounded-xl py-3 px-5 text-[14px] font-medium text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all duration-200 outline-none"
-        />
-        
-        {content.trim() ? (
-          <button 
-            type="submit" 
-            className="w-12 h-12 bg-indigo-600 text-white rounded-xl flex items-center justify-center hover:bg-indigo-700 transition-all duration-200 shadow-md shadow-indigo-200 hover:scale-105 active:scale-95"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 rotate-90" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-            </svg>
-          </button>
-        ) : (
-          <button 
-            type="button" 
-            onClick={() => alert('Voice messages coming soon!')}
-            className="w-12 h-12 bg-slate-100 text-slate-400 rounded-xl flex items-center justify-center hover:bg-indigo-50 hover:text-indigo-600 transition-all duration-200"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-            </svg>
-          </button>
-        )}
-      </form>
-    </div>
+    <form
+      onSubmit={handleSubmit}
+      className="flex items-end gap-2 bg-(--surface) rounded-2xl border border-(--line) p-1.5 shadow-soft focus-within:border-(--accent)/40 focus-within:shadow-pop transition"
+    >
+      <button
+        type="button"
+        onClick={() =>
+          toast.info(
+            'Emoji picker',
+            'Coming in a future release. For now type your favourite Unicode character 🎉',
+          )
+        }
+        className="btn-ghost h-10 w-10"
+        title="Emoji"
+        aria-label="Insert emoji"
+      >
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M9 10h.01M15 10h.01M9 14a4 4 0 006 0" strokeLinecap="round" />
+        </svg>
+      </button>
+
+      <button
+        type="button"
+        onClick={() =>
+          toast.info('Attachments', 'File uploads are on the roadmap.')
+        }
+        className="btn-ghost h-10 w-10"
+        title="Attach file"
+        aria-label="Attach file"
+      >
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66L9.41 17.42a2 2 0 01-2.83-2.83l8.49-8.49" />
+        </svg>
+      </button>
+
+      <textarea
+        ref={textareaRef}
+        value={content}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        rows={1}
+        placeholder="Send a message…"
+        aria-label="Message"
+        className="flex-1 resize-none bg-transparent border-0 outline-none px-2 py-2.5 text-[15px] font-medium text-(--ink) placeholder:text-(--ink-subtle) leading-relaxed max-h-40"
+      />
+
+      <button
+        type="submit"
+        disabled={!hasContent}
+        className={`h-10 w-10 rounded-xl flex items-center justify-center transition transform active:scale-95 ${
+          hasContent
+            ? 'bg-(--accent) text-(--accent-ink) hover:bg-(--accent-hover) shadow-soft'
+            : 'bg-(--line-soft) text-(--ink-subtle) cursor-not-allowed'
+        }`}
+        title="Send (Enter)"
+        aria-label="Send message"
+      >
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+          <path d="M3.4 20.4l17.45-8.4a.5.5 0 0 0 0-.91L3.4 2.69a.5.5 0 0 0-.7.55l1.55 6.71L15 12 4.25 13.05l-1.55 6.79a.5.5 0 0 0 .7.56z" />
+        </svg>
+      </button>
+    </form>
   );
 }

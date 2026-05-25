@@ -1,47 +1,95 @@
 'use client';
 
 import { formatTime } from '@/lib/utils';
-import type { Message } from '@/types';
+import type { Message, MessageDeliveryStatus } from '@/types';
+import Avatar from '@/components/ui/Avatar';
+import MessageStatus from './MessageStatus';
 
 interface MessageBubbleProps {
   message: Message;
   isOwn: boolean;
+  status: MessageDeliveryStatus;
+  /** True if this is part of a consecutive run by the same sender. */
+  isGrouped?: boolean;
+  /** True if this is the LAST message of a consecutive run (footer slot). */
+  isGroupTail?: boolean;
+  /** Sender display name (only shown on first message in a group, non-own). */
+  senderName?: string;
 }
 
-export default function MessageBubble({ message, isOwn }: MessageBubbleProps) {
+export default function MessageBubble({
+  message,
+  isOwn,
+  status,
+  isGrouped = false,
+  isGroupTail = true,
+  senderName,
+}: MessageBubbleProps) {
   const time = formatTime(message.timestamp || message.createdAt || '');
 
+  // Bubble shape adapts based on grouping (tail vs body)
+  const ownShape = isGrouped
+    ? 'rounded-2xl rounded-tr-md'
+    : 'rounded-2xl rounded-tr-sm';
+  const otherShape = isGrouped
+    ? 'rounded-2xl rounded-tl-md'
+    : 'rounded-2xl rounded-tl-sm';
+
   return (
-    <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-2 px-4 group`}>
-      <div
-        className={`max-w-[80%] md:max-w-[70%] px-4 py-2.5 shadow-sm relative transition-all duration-200 group-hover:shadow-md ${
-          isOwn
-            ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-none shadow-indigo-100'
-            : 'bg-white text-slate-800 rounded-2xl rounded-tl-none border border-slate-100'
-        }`}
-      >
-        {!isOwn && message.senderName && (
-          <p className="text-[10px] font-bold text-indigo-500 mb-1 uppercase tracking-widest">{message.senderName}</p>
+    <div
+      className={`group flex items-end gap-2 px-1 ${
+        isOwn ? 'justify-end flex-row-reverse' : 'justify-start'
+      } ${isGrouped ? 'mt-0.5' : 'mt-3'}`}
+    >
+      {/* Avatar (only for received, only on last bubble in a group) */}
+      {!isOwn && (
+        <div className={`w-9 shrink-0 ${isGroupTail ? '' : 'invisible'}`}>
+          {isGroupTail && (
+            <Avatar
+              name={senderName || message.senderName || '?'}
+              size="sm"
+              userId={message.senderId}
+            />
+          )}
+        </div>
+      )}
+
+      <div className={`flex flex-col max-w-[75%] ${isOwn ? 'items-end' : 'items-start'}`}>
+        {/* Sender name — only on first message of a run from someone else */}
+        {!isOwn && senderName && !isGrouped && (
+          <span className="text-[11px] font-semibold text-(--ink-muted) ml-3 mb-0.5">
+            {senderName}
+          </span>
         )}
-        <div className="flex flex-col gap-1">
-          <p className="text-[14px] leading-relaxed font-medium break-words whitespace-pre-wrap">{message.content}</p>
-          <div className="flex items-center justify-end gap-1.5 opacity-60">
-            <span className={`text-[9px] font-bold uppercase tracking-tight ${isOwn ? 'text-indigo-100' : 'text-slate-400'}`}>
+
+        <div
+          className={`relative px-4 py-2.5 transition-shadow ${
+            isOwn
+              ? `${ownShape} text-(--accent-ink) shadow-soft`
+              : `${otherShape} bg-(--bubble-other) text-(--bubble-other-ink) border border-(--line-soft) shadow-soft`
+          }`}
+          style={
+            isOwn
+              ? {
+                  background:
+                    'linear-gradient(135deg, var(--accent), color-mix(in oklab, var(--accent) 85%, var(--ink)))',
+                }
+              : undefined
+          }
+        >
+          <p className="text-[15px] leading-relaxed font-medium break-words whitespace-pre-wrap">
+            {message.content}
+          </p>
+
+          <div
+            className={`flex items-center justify-end gap-1.5 mt-1 -mb-0.5 ${
+              isOwn ? 'text-white/75' : 'text-(--ink-subtle)'
+            }`}
+          >
+            <span className="font-mono text-[10px] tracking-wide leading-none">
               {time}
             </span>
-            {isOwn && (
-              <span className={message.readBy?.length > 1 ? 'text-sky-300' : 'text-indigo-200'}>
-                {message.readBy?.length > 1 ? (
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                    <path d="M12.122 18.356l-1.107 1.107-8.205-8.205 1.107-1.107 7.098 7.098 13.903-13.903 1.107 1.107-15.003 15.003zm-10.405-7.098l1.107-1.107 1.107 1.107-1.107 1.107-1.107-1.107zm11.512 8.205l-1.107-1.107 9.346-9.345 1.108 1.107-9.347 9.345z"/>
-                  </svg>
-                ) : (
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                    <path d="M12.122 18.356l-1.107 1.107-8.205-8.205 1.107-1.107 7.098 7.098 13.903-13.903 1.107 1.107-15.003 15.003z"/>
-                  </svg>
-                )}
-              </span>
-            )}
+            <MessageStatus status={status} isOwn={isOwn} />
           </div>
         </div>
       </div>

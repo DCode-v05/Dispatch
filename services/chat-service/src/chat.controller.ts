@@ -1,12 +1,13 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Delete,
-  Param,
+  BadRequestException,
   Body,
-  UseGuards,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
   Request,
+  UseGuards,
 } from '@nestjs/common';
 import { EventPattern, Payload } from '@nestjs/microservices';
 import { ChatService } from './chat.service';
@@ -21,6 +22,8 @@ interface AuthenticatedRequest extends ExpressRequest {
     username?: string;
   };
 }
+
+const MAX_PARTICIPANTS_PER_ADD = 50;
 
 @Controller()
 export class ChatController {
@@ -43,8 +46,8 @@ export class ChatController {
 
   @UseGuards(JwtAuthGuard)
   @Get('rooms/:id')
-  async getRoom(@Param('id') id: string) {
-    return this.chatService.getRoomById(id);
+  async getRoom(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
+    return this.chatService.getRoomForUser(id, req.user.userId);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -61,8 +64,17 @@ export class ChatController {
   async addParticipants(
     @Param('id') id: string,
     @Body('userIds') userIds: string[],
+    @Request() req: AuthenticatedRequest,
   ) {
-    return this.chatService.addParticipants(id, userIds);
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      throw new BadRequestException('userIds must be a non-empty array');
+    }
+    if (userIds.length > MAX_PARTICIPANTS_PER_ADD) {
+      throw new BadRequestException(
+        `cannot add more than ${MAX_PARTICIPANTS_PER_ADD} participants at once`,
+      );
+    }
+    return this.chatService.addParticipants(id, userIds, req.user.userId);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -76,11 +88,13 @@ export class ChatController {
 
   @UseGuards(JwtAuthGuard)
   @Delete('rooms/:id')
-  async deleteRoom(@Param('id') id: string) {
-    return this.chatService.deleteRoom(id);
+  async deleteRoom(
+    @Param('id') id: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.chatService.deleteRoom(id, req.user.userId);
   }
 
-  // RabbitMQ consumer: update lastMessageAt when a message is sent
   @EventPattern('message.sent')
   async handleMessageSent(@Payload() data: { roomId: string }) {
     await this.chatService.updateLastMessage(data.roomId);
@@ -92,6 +106,9 @@ export class ChatController {
     @Body() dto: { email: string },
     @Request() req: AuthenticatedRequest,
   ) {
+    if (!dto.email || typeof dto.email !== 'string') {
+      throw new BadRequestException('email is required');
+    }
     const username = req.user.username || req.user.email.split('@')[0];
     return this.chatService.sendInvitation(
       req.user.userId,
@@ -114,12 +131,20 @@ export class ChatController {
     @Request() req: AuthenticatedRequest,
   ) {
     const username = req.user.username || req.user.email.split('@')[0];
-    return this.chatService.acceptInvitation(id, req.user.userId, username);
+    return this.chatService.acceptInvitation(
+      id,
+      req.user.userId,
+      username,
+      req.user.email,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('invitations/:id/reject')
-  async rejectInvitation(@Param('id') id: string) {
-    return this.chatService.rejectInvitation(id);
+  async rejectInvitation(
+    @Param('id') id: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.chatService.rejectInvitation(id, req.user.email);
   }
 }

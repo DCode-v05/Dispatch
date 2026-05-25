@@ -6,6 +6,12 @@ export interface User {
   isOnline?: boolean;
 }
 
+export type MessageDeliveryStatus =
+  | 'pending' // optimistically added, not yet acknowledged by server
+  | 'sent' // server has persisted (has messageId/_id from backend)
+  | 'delivered' // at least one recipient is currently online
+  | 'seen'; // at least one recipient has read the message
+
 export interface Message {
   id: string;
   _id?: string;
@@ -17,6 +23,8 @@ export interface Message {
   timestamp: string;
   createdAt?: string;
   readBy: string[];
+  /** Set on the sender's local copy; remote messages don't carry this. */
+  status?: MessageDeliveryStatus;
 }
 
 export interface Room {
@@ -27,6 +35,9 @@ export interface Room {
   participants: string[];
   participantNames?: Record<string, string>;
   lastMessageAt?: string;
+  lastMessageContent?: string;
+  lastMessageSenderId?: string;
+  unreadCount?: number;
   createdBy: string;
 }
 

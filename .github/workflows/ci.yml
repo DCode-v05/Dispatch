@@ -22,6 +22,11 @@ jobs:
           POSTGRES_DB: chatplatform
         ports:
           - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U chatadmin"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
       mongodb:
         image: mongo:7
         ports:
@@ -61,15 +66,36 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ matrix.service }}
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Lint
         working-directory: ${{ matrix.service }}
         run: npm run lint
 
-      - name: Run tests
+      - name: Build (type-check + compile)
         working-directory: ${{ matrix.service }}
+        run: npm run build
+
+      - name: Run unit tests
+        working-directory: ${{ matrix.service }}
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-test-secret-must-be-at-least-32-chars-long
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_USER: chatadmin
+          POSTGRES_PASSWORD: chatpass123
+          POSTGRES_DB: chatplatform
+          MONGODB_URI: mongodb://localhost:27017/chatplatform
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          REDIS_PASSWORD: ''
+          RABBITMQ_URL: amqp://chatadmin:chatpass123@localhost:5672
         run: npm test -- --passWithNoTests
+
+      - name: Audit dependencies (non-fatal)
+        working-directory: ${{ matrix.service }}
+        run: npm audit --audit-level=high --omit=dev || true
 
       - name: Upload coverage
         if: always()
@@ -78,6 +104,7 @@ jobs:
           name: coverage-${{ strategy.job-index }}
           path: ${{ matrix.service }}/coverage/
           retention-days: 7
+          if-no-files-found: ignore
 
   build-images:
     needs: lint-and-test
@@ -144,3 +171,12 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Trivy image scan (non-fatal)
+        uses: aquasecurity/trivy-action@master
+        continue-on-error: true
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.image_name }}:latest
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          exit-code: '0'

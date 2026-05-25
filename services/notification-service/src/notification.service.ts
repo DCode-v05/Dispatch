@@ -1,45 +1,94 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import Redis from 'ioredis';
+import { REDIS_CLIENT } from './common/redis.provider';
+
+export interface NotificationRecord {
+  id: string;
+  type: string;
+  message?: string;
+  timestamp: string;
+  [k: string]: unknown;
+}
+
+const MAX_NOTIFICATIONS_PER_USER = 100;
+const MAX_RETURNED = 50;
+const TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
 @Injectable()
 export class NotificationService {
-  private readonly redis: Redis;
+  private readonly logger = new Logger(NotificationService.name);
 
-  constructor() {
-    this.redis = new Redis({
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379', 10),
-      password: process.env.REDIS_PASSWORD || undefined,
-    });
+  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+
+  async addNotification(
+    userId: string,
+    notification: NotificationRecord,
+  ): Promise<void> {
+    try {
+      const key = `notifications:${userId}`;
+      await this.redis
+        .multi()
+        .lpush(key, JSON.stringify(notification))
+        .ltrim(key, 0, MAX_NOTIFICATIONS_PER_USER - 1)
+        .expire(key, TTL_SECONDS)
+        .exec();
+    } catch (err) {
+      this.logger.warn(
+        `addNotification failed for user ${userId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
-  async addNotification(userId: string, notification: any): Promise<void> {
-    const key = `notifications:${userId}`;
-    await this.redis.lpush(key, JSON.stringify(notification));
-    await this.redis.ltrim(key, 0, 99);
-  }
-
-  async getNotifications(userId: string): Promise<any[]> {
-    const key = `notifications:${userId}`;
-    const raw = await this.redis.lrange(key, 0, 49);
-    return raw.map((item) => JSON.parse(item));
+  async getNotifications(userId: string): Promise<NotificationRecord[]> {
+    try {
+      const key = `notifications:${userId}`;
+      const raw = await this.redis.lrange(key, 0, MAX_RETURNED - 1);
+      const out: NotificationRecord[] = [];
+      for (const item of raw) {
+        try {
+          out.push(JSON.parse(item));
+        } catch {
+          // skip corrupted entries
+        }
+      }
+      return out;
+    } catch (err) {
+      this.logger.warn(
+        `getNotifications failed for user ${userId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return [];
+    }
   }
 
   async markAsRead(userId: string, notificationId: string): Promise<void> {
     const key = `notifications:${userId}`;
-    const notifications = await this.redis.lrange(key, 0, -1);
-
-    for (const item of notifications) {
-      const parsed = JSON.parse(item);
-      if (parsed.id === notificationId) {
-        await this.redis.lrem(key, 1, item);
-        break;
+    try {
+      const notifications = await this.redis.lrange(key, 0, -1);
+      for (const item of notifications) {
+        try {
+          const parsed = JSON.parse(item) as { id?: string };
+          if (parsed.id === notificationId) {
+            await this.redis.lrem(key, 1, item);
+            return;
+          }
+        } catch {
+          // skip
+        }
       }
+    } catch (err) {
+      this.logger.warn(
+        `markAsRead failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
   async clearNotifications(userId: string): Promise<void> {
-    const key = `notifications:${userId}`;
-    await this.redis.del(key);
+    try {
+      await this.redis.del(`notifications:${userId}`);
+    } catch (err) {
+      this.logger.warn(
+        `clearNotifications failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }

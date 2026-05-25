@@ -1,0 +1,15 @@
+{
+  "name": "realtime-chat-microservices",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Realtime chat platform — root tooling for monorepo-wide pre-commit hooks",
+  "scripts": {
+    "prepare": "husky",
+    "lint:all": "node ./scripts/run-in-each.js lint",
+    "build:all": "node ./scripts/run-in-each.js build",
+    "test:all": "node ./scripts/run-in-each.js test -- --passWithNoTests"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}

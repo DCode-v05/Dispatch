@@ -199,7 +199,7 @@ services:
       context: ./gateway
     container_name: chat-gateway
     ports:
-      - "80:80"
+      - "80:8080"  # nginx runs as non-root inside the container on 8080
     depends_on:
       - user-service
       - chat-service
@@ -207,7 +207,7 @@ services:
       - notification-service
       - presence-service
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
       interval: 10s
       timeout: 5s
       retries: 3

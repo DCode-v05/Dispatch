@@ -1,13 +1,23 @@
-import { IsString, IsOptional, IsEnum } from 'class-validator';
+import {
+  IsEnum,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class SendMessageDto {
   @IsString()
+  @MinLength(1)
+  @MaxLength(64)
   roomId: string;
 
   @IsString()
+  @MinLength(1)
+  @MaxLength(4000)
   content: string;
 
   @IsOptional()
   @IsEnum(['text', 'image', 'file'])
-  type?: string;
+  type?: 'text' | 'image' | 'file';
 }

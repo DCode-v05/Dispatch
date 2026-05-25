@@ -1,12 +1,14 @@
 import {
+  BadRequestException,
+  Body,
   Controller,
   Get,
-  Patch,
   Param,
-  Body,
+  ParseUUIDPipe,
+  Patch,
   Query,
-  UseGuards,
   Request,
+  UseGuards,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -21,11 +23,13 @@ interface AuthenticatedRequest extends ExpressRequest {
   };
 }
 
+const MAX_BATCH_IDS = 100;
+
+@UseGuards(JwtAuthGuard)
 @Controller('users')
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
-  @UseGuards(JwtAuthGuard)
   @Get('me')
   async getMe(@Request() req: AuthenticatedRequest) {
     const user = await this.userService.findById(req.user.userId);
@@ -33,7 +37,6 @@ export class UserController {
     return result;
   }
 
-  @UseGuards(JwtAuthGuard)
   @Patch('me')
   async updateMe(
     @Request() req: AuthenticatedRequest,
@@ -44,22 +47,34 @@ export class UserController {
     return result;
   }
 
-  @UseGuards(JwtAuthGuard)
   @Get(':id')
-  async getUser(@Param('id') id: string) {
+  async getUser(@Param('id', new ParseUUIDPipe()) id: string) {
     const user = await this.userService.findById(id);
     const { password: _password, ...result } = user;
     return result;
   }
 
   @Get()
-  async getUsers(@Query('ids') ids: string, @Query('q') query: string) {
+  async getUsers(@Query('ids') ids?: string, @Query('q') query?: string) {
     if (query) {
+      if (query.length < 2) {
+        throw new BadRequestException(
+          'search query must be at least 2 characters',
+        );
+      }
       const users = await this.userService.search(query);
       return users.map(({ password: _password, ...rest }) => rest);
     }
     if (!ids) return [];
-    const idArray = ids.split(',');
+    const idArray = ids
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (idArray.length > MAX_BATCH_IDS) {
+      throw new BadRequestException(
+        `cannot request more than ${MAX_BATCH_IDS} users in one batch`,
+      );
+    }
     const users = await this.userService.findByIds(idArray);
     return users.map(({ password: _password, ...rest }) => rest);
   }

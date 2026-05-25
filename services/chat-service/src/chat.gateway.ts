@@ -1,16 +1,16 @@
 import {
-  WebSocketGateway,
-  WebSocketServer,
-  SubscribeMessage,
-  OnGatewayConnection,
-  OnGatewayDisconnect,
   ConnectedSocket,
   MessageBody,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+  SubscribeMessage,
+  WebSocketGateway,
+  WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ChatService } from './chat.service';
-import { Inject } from '@nestjs/common';
+import { Inject, Logger } from '@nestjs/common';
 import { ClientProxy, EventPattern, Payload } from '@nestjs/microservices';
 
 interface JwtPayload {
@@ -27,11 +27,24 @@ interface RoomDocument {
   _id: { toString(): string };
 }
 
+const MAX_MESSAGE_LENGTH = 4000;
+
+function corsOrigin(): string | string[] | boolean {
+  const v = process.env.FRONTEND_URL;
+  if (!v) return process.env.NODE_ENV === 'production' ? false : true;
+  return v
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 @WebSocketGateway({
   namespace: '/chat',
-  cors: { origin: '*' },
+  cors: { origin: corsOrigin(), credentials: true },
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
+  private readonly logger = new Logger(ChatGateway.name);
+
   @WebSocketServer()
   server: Server;
 
@@ -50,7 +63,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         (typeof authHeader === 'string' ? authHeader.split(' ')[1] : undefined);
 
       if (!rawToken || typeof rawToken !== 'string') {
-        client.disconnect();
+        client.emit('unauthorized', { reason: 'missing token' });
+        client.disconnect(true);
         return;
       }
 
@@ -59,72 +73,73 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       socketData.userId = payload.sub;
       socketData.email = payload.email;
 
-      // Auto-join all rooms the user belongs to
       const rooms = await this.chatService.getUserRooms(payload.sub);
       for (const room of rooms) {
         const roomDoc = room as unknown as RoomDocument;
         await client.join(roomDoc._id.toString());
       }
-
-      console.log(`Client connected: ${payload.sub}`);
-    } catch {
-      client.disconnect();
+    } catch (err) {
+      this.logger.warn(
+        `WS auth failed for ${client.id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      client.emit('unauthorized', { reason: 'invalid token' });
+      client.disconnect(true);
     }
   }
 
-  handleDisconnect(client: Socket) {
-    const socketData = client.data as Partial<SocketData>;
-    console.log(`Client disconnected: ${socketData?.userId ?? 'unknown'}`);
+  handleDisconnect(_client: Socket) {
+    // Socket.IO cleans up room memberships automatically.
   }
 
   @SubscribeMessage('send_message')
-  handleMessage(
+  async handleMessage(
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { roomId: string; content: string },
   ) {
     const socketData = client.data as SocketData;
+    if (!socketData?.userId) {
+      client.emit('error', { message: 'not authenticated' });
+      return;
+    }
+    if (!payload?.roomId || typeof payload.roomId !== 'string') {
+      client.emit('error', { message: 'roomId is required' });
+      return;
+    }
+    if (
+      !payload.content ||
+      typeof payload.content !== 'string' ||
+      payload.content.trim().length === 0
+    ) {
+      client.emit('error', { message: 'content is required' });
+      return;
+    }
+    const content = payload.content.slice(0, MAX_MESSAGE_LENGTH);
+
+    const isMember = await this.chatService.isParticipant(
+      payload.roomId,
+      socketData.userId,
+    );
+    if (!isMember) {
+      client.emit('error', { message: 'not a participant of this room' });
+      return;
+    }
+
     const message = {
       roomId: payload.roomId,
       senderId: socketData.userId,
-      content: payload.content,
+      content,
       timestamp: new Date().toISOString(),
     };
 
-    // Broadcast to all clients in the room
     this.server.to(payload.roomId).emit('new_message', message);
 
-    // Save to message-service via RabbitMQ
-    this.messageClient.emit('message.create', {
+    this.safeEmit('message.create', {
       roomId: payload.roomId,
       senderId: socketData.userId,
-      content: payload.content,
+      content,
     });
 
     return message;
-  }
-
-  async handleJoinRoom(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: { roomId: string },
-  ) {
-    await client.join(payload.roomId);
-    const socketData = client.data as SocketData;
-    this.server.to(payload.roomId).emit('user_joined', {
-      userId: socketData.userId,
-      roomId: payload.roomId,
-    });
-  }
-
-  async handleLeaveRoom(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: { roomId: string },
-  ) {
-    await client.leave(payload.roomId);
-    const socketData = client.data as SocketData;
-    this.server.to(payload.roomId).emit('user_left', {
-      userId: socketData.userId,
-      roomId: payload.roomId,
-    });
   }
 
   @SubscribeMessage('typing')
@@ -133,13 +148,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() payload: { roomId: string },
   ) {
     const socketData = client.data as SocketData;
+    if (!socketData?.userId || !payload?.roomId) return;
     client.to(payload.roomId).emit('user_typing', {
       userId: socketData.userId,
       roomId: payload.roomId,
     });
   }
 
-  // Handle invitation acceptance to join users to the new room immediately
   @EventPattern('invitation.accepted')
   async handleInvitationAccepted(
     @Payload() data: { roomId: string; participants: string[] },
@@ -157,5 +172,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @EventPattern('messages.read')
   handleMessagesRead(@Payload() data: { roomId: string; userId: string }) {
     this.server.to(data.roomId).emit('messages_read', data);
+  }
+
+  private safeEmit(pattern: string, payload: Record<string, unknown>): void {
+    try {
+      this.messageClient.emit(pattern, payload).subscribe({
+        error: (err: Error) =>
+          this.logger.warn(`Failed to emit ${pattern}: ${err.message}`),
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Failed to emit ${pattern}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }

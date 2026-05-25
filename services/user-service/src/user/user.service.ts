@@ -21,6 +21,7 @@ export class UserService {
   }
 
   async findByIds(ids: string[]): Promise<User[]> {
+    if (ids.length === 0) return [];
     return this.userRepo.find({ where: { id: In(ids) } });
   }
 
@@ -35,11 +36,34 @@ export class UserService {
   }
 
   async search(query: string): Promise<User[]> {
+    const sanitized = query.replace(/[%_]/g, '\\$&');
     return this.userRepo
       .createQueryBuilder('user')
-      .where('user.username ILIKE :query', { query: `%${query}%` })
-      .orWhere('user.email ILIKE :query', { query: `%${query}%` })
+      .where('user.username ILIKE :query', { query: `%${sanitized}%` })
+      .orWhere('user.email ILIKE :query', { query: `%${sanitized}%` })
       .limit(10)
       .getMany();
+  }
+
+  async recordFailedLogin(
+    userId: string,
+    maxAttempts: number,
+    lockoutMinutes: number,
+  ): Promise<void> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) return;
+    const next = (user.failedLoginAttempts ?? 0) + 1;
+    const update: Partial<User> = { failedLoginAttempts: next };
+    if (next >= maxAttempts) {
+      update.lockedUntil = new Date(Date.now() + lockoutMinutes * 60_000);
+    }
+    await this.userRepo.update(userId, update);
+  }
+
+  async resetFailedLogins(userId: string): Promise<void> {
+    await this.userRepo.update(userId, {
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+    });
   }
 }

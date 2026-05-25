@@ -11,9 +11,22 @@ import { UserModule } from '../user/user.module';
   imports: [
     UserModule,
     PassportModule,
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'dev-jwt-secret',
-      signOptions: { expiresIn: '24h' },
+    JwtModule.registerAsync({
+      useFactory: () => {
+        const secret = process.env.JWT_SECRET;
+        if (!secret) {
+          throw new Error(
+            '[user-service] JWT_SECRET env var is required for JwtModule',
+          );
+        }
+        const expSeconds = process.env.JWT_EXPIRATION
+          ? parseInt(process.env.JWT_EXPIRATION, 10)
+          : 86400;
+        return {
+          secret,
+          signOptions: { expiresIn: expSeconds },
+        };
+      },
     }),
     ClientsModule.register([
       {
@@ -23,6 +36,7 @@ import { UserModule } from '../user/user.module';
           urls: [process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
           queue: 'notification_queue',
           queueOptions: { durable: true },
+          socketOptions: { heartbeatIntervalInSeconds: 30 },
         },
       },
     ]),

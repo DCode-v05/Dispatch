@@ -1,21 +1,43 @@
 import {
-  WebSocketGateway,
-  WebSocketServer,
-  SubscribeMessage,
+  ConnectedSocket,
   OnGatewayConnection,
   OnGatewayDisconnect,
-  ConnectedSocket,
+  SubscribeMessage,
+  WebSocketGateway,
+  WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
-import { Inject } from '@nestjs/common';
+import { Inject, Logger } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { PresenceService } from './presence.service';
 
-@WebSocketGateway({ namespace: '/presence', cors: { origin: '*' } })
+interface JwtPayload {
+  sub: string;
+}
+
+interface SocketData {
+  userId: string;
+}
+
+function corsOrigin(): string | string[] | boolean {
+  const v = process.env.FRONTEND_URL;
+  if (!v) return process.env.NODE_ENV === 'production' ? false : true;
+  return v
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+@WebSocketGateway({
+  namespace: '/presence',
+  cors: { origin: corsOrigin(), credentials: true },
+})
 export class PresenceGateway
   implements OnGatewayConnection, OnGatewayDisconnect
 {
+  private readonly logger = new Logger(PresenceGateway.name);
+
   @WebSocketServer() server: Server;
 
   constructor(
@@ -27,18 +49,22 @@ export class PresenceGateway
 
   async handleConnection(client: Socket) {
     try {
+      const auth = client.handshake.auth as Record<string, unknown>;
+      const headerAuth = client.handshake.headers?.authorization;
       const token =
-        client.handshake.auth?.token ||
-        client.handshake.headers?.authorization?.split(' ')[1];
+        (typeof auth?.token === 'string' && auth.token) ||
+        (typeof headerAuth === 'string' ? headerAuth.split(' ')[1] : undefined);
+
       if (!token) {
-        client.disconnect();
+        client.emit('unauthorized', { reason: 'missing token' });
+        client.disconnect(true);
         return;
       }
-      const payload = this.jwtService.verify(token);
-      client.data.userId = payload.sub;
+      const payload = this.jwtService.verify<JwtPayload>(token);
+      (client.data as SocketData).userId = payload.sub;
 
       await this.presenceService.setOnline(payload.sub, client.id);
-      this.notificationClient.emit('user.online', {
+      this.safeEmit('user.online', {
         userId: payload.sub,
         timestamp: new Date(),
       });
@@ -46,20 +72,29 @@ export class PresenceGateway
         userId: payload.sub,
         isOnline: true,
       });
-    } catch {
-      client.disconnect();
+    } catch (err) {
+      this.logger.warn(
+        `WS auth failed for ${client.id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      client.emit('unauthorized', { reason: 'invalid token' });
+      client.disconnect(true);
     }
   }
 
   async handleDisconnect(client: Socket) {
-    if (client.data?.userId) {
-      await this.presenceService.setOffline(client.data.userId);
-      this.notificationClient.emit('user.offline', {
-        userId: client.data.userId,
+    const data = client.data as Partial<SocketData>;
+    if (!data?.userId) return;
+    const torndown = await this.presenceService.setOffline(
+      data.userId,
+      client.id,
+    );
+    if (torndown) {
+      this.safeEmit('user.offline', {
+        userId: data.userId,
         timestamp: new Date(),
       });
       this.server.emit('presence_update', {
-        userId: client.data.userId,
+        userId: data.userId,
         isOnline: false,
       });
     }
@@ -67,8 +102,25 @@ export class PresenceGateway
 
   @SubscribeMessage('heartbeat')
   async handleHeartbeat(@ConnectedSocket() client: Socket) {
-    if (client.data?.userId) {
-      await this.presenceService.refreshHeartbeat(client.data.userId);
+    const data = client.data as Partial<SocketData>;
+    if (!data?.userId) {
+      client.emit('unauthorized', { reason: 'no session' });
+      client.disconnect(true);
+      return;
+    }
+    await this.presenceService.refreshHeartbeat(data.userId);
+  }
+
+  private safeEmit(pattern: string, payload: Record<string, unknown>): void {
+    try {
+      this.notificationClient.emit(pattern, payload).subscribe({
+        error: (err: Error) =>
+          this.logger.warn(`Failed to emit ${pattern}: ${err.message}`),
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Failed to emit ${pattern}: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 }

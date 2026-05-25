@@ -3,7 +3,7 @@ import { Document } from 'mongoose';
 
 @Schema({ timestamps: true })
 export class Invitation extends Document {
-  @Prop({ required: true })
+  @Prop({ required: true, index: true })
   senderId: string;
 
   @Prop({ required: true })
@@ -12,10 +12,14 @@ export class Invitation extends Document {
   @Prop({ required: true })
   senderUsername: string;
 
-  @Prop({ required: true })
+  @Prop({ required: true, index: true })
   receiverEmail: string;
 
-  @Prop({ enum: ['pending', 'accepted', 'rejected'], default: 'pending' })
+  @Prop({
+    enum: ['pending', 'accepted', 'rejected'],
+    default: 'pending',
+    index: true,
+  })
   status: string;
 
   @Prop()
@@ -23,3 +27,5 @@ export class Invitation extends Document {
 }
 
 export const InvitationSchema = SchemaFactory.createForClass(Invitation);
+InvitationSchema.index({ receiverEmail: 1, status: 1 });
+InvitationSchema.index({ senderId: 1, receiverEmail: 1, status: 1 });
