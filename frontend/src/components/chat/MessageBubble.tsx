@@ -18,9 +18,9 @@ interface MessageBubbleProps {
 }
 
 /**
- * Layout convention (per design spec):
- *   • Sent (own) bubbles align to the LEFT edge of the conversation column.
- *   • Received bubbles align to the RIGHT edge, with the sender's avatar
+ * Layout convention:
+ *   • Sent (own) bubbles align to the RIGHT edge of the conversation column.
+ *   • Received bubbles align to the LEFT edge, with the sender's avatar
  *     flush to the LEFT of the bubble.
  */
 export default function MessageBubble({
@@ -35,12 +35,13 @@ export default function MessageBubble({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const time = formatTime(message.timestamp || message.createdAt || '');
 
+  // Bubble tail is cut on the side adjacent to the alignment edge.
   const ownShape = isGrouped
-    ? 'rounded-2xl rounded-tl-md'
-    : 'rounded-2xl rounded-tl-sm';
-  const otherShape = isGrouped
     ? 'rounded-2xl rounded-tr-md'
     : 'rounded-2xl rounded-tr-sm';
+  const otherShape = isGrouped
+    ? 'rounded-2xl rounded-tl-md'
+    : 'rounded-2xl rounded-tl-sm';
 
   const bubbleInner = (
     <div
@@ -78,7 +79,7 @@ export default function MessageBubble({
   return (
     <div
       className={`group flex items-end gap-2 px-1 ${
-        isOwn ? 'justify-start' : 'justify-end'
+        isOwn ? 'justify-end' : 'justify-start'
       } ${isGrouped ? 'mt-0.5' : 'mt-3'}`}
     >
       {/* Received: avatar to the LEFT of the bubble (only on group tail) */}
@@ -96,11 +97,11 @@ export default function MessageBubble({
 
       <div
         className={`flex flex-col max-w-[75%] ${
-          isOwn ? 'items-start' : 'items-end'
+          isOwn ? 'items-end' : 'items-start'
         }`}
       >
         {!isOwn && senderName && !isGrouped && (
-          <span className="text-[11px] font-semibold text-(--ink-muted) mr-3 mb-0.5">
+          <span className="text-[11px] font-semibold text-(--ink-muted) ml-3 mb-0.5">
             {senderName}
           </span>
         )}
@@ -110,7 +111,7 @@ export default function MessageBubble({
           {isOwn && onDelete && (
             <>
               {confirmingDelete ? (
-                <div className="flex items-center gap-1 animate-fade-in-up order-2">
+                <div className="flex items-center gap-1 animate-fade-in-up order-1">
                   <button
                     onClick={() => {
                       onDelete();
@@ -130,7 +131,7 @@ export default function MessageBubble({
               ) : (
                 <button
                   onClick={() => setConfirmingDelete(true)}
-                  className="order-2 opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 rounded-lg bg-(--surface) border border-(--line-soft) text-(--ink-subtle) hover:text-(--danger) hover:border-(--danger)/40 flex items-center justify-center shadow-soft"
+                  className="order-1 opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 rounded-lg bg-(--surface) border border-(--line-soft) text-(--ink-subtle) hover:text-(--danger) hover:border-(--danger)/40 flex items-center justify-center shadow-soft"
                   title="Delete message"
                   aria-label="Delete message"
                 >
@@ -139,7 +140,7 @@ export default function MessageBubble({
                   </svg>
                 </button>
               )}
-              <div className="order-1">{bubbleInner}</div>
+              <div className="order-2">{bubbleInner}</div>
             </>
           )}
           {!(isOwn && onDelete) && bubbleInner}
