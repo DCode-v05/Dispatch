@@ -205,7 +205,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @EventPattern('invitation.rejected')
   handleInvitationRejected(
     @Payload()
-    data: { invitationId: string; senderId: string; receiverEmail: string },
+    data: {
+      invitationId: string;
+      senderId: string;
+      receiverEmail: string;
+    },
   ) {
     this.server.to(`user:${data.senderId}`).emit('invitation_rejected', {
       invitationId: data.invitationId,
@@ -216,17 +220,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @EventPattern('room.created')
   async handleRoomCreated(
     @Payload()
-    data: { roomId: string; participants: string[]; createdBy: string },
+    data: {
+      roomId: string;
+      participants: string[];
+      createdBy: string;
+    },
   ) {
     // Subscribe every connected participant to the new room and emit room_created
     const sockets = await this.server.fetchSockets();
     for (const socket of sockets) {
       const socketData = socket.data as Partial<SocketData>;
-      if (
-        socketData.userId &&
-        data.participants.includes(socketData.userId)
-      ) {
-        await socket.join(data.roomId);
+      if (socketData.userId && data.participants.includes(socketData.userId)) {
+        socket.join(data.roomId);
         socket.emit('room_created', { roomId: data.roomId });
       }
     }
@@ -240,7 +245,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @EventPattern('message.deleted')
   handleMessageDeleted(
     @Payload()
-    data: { messageId: string; roomId: string; senderId: string },
+    data: {
+      messageId: string;
+      roomId: string;
+      senderId: string;
+    },
   ) {
     this.server.to(data.roomId).emit('message_deleted', data);
   }
@@ -267,7 +276,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           socketData.userId &&
           data.addedUserIds.includes(socketData.userId)
         ) {
-          await socket.join(data.roomId);
+          socket.join(data.roomId);
           socket.emit('room_created', { roomId: data.roomId });
         }
       }
@@ -282,7 +291,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // Detach all sockets from the now-defunct room
     const sockets = await this.server.in(data.roomId).fetchSockets();
     for (const socket of sockets) {
-      await socket.leave(data.roomId);
+      socket.leave(data.roomId);
     }
   }
 
