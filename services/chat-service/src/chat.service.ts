@@ -45,6 +45,13 @@ export class ChatService {
       createdBy: userId,
     });
 
+    // Tell the chat-gateway so it can notify (and subscribe) other participants
+    this.safeEmit(this.chatClient, 'room.created', {
+      roomId: room._id,
+      participants: room.participants,
+      createdBy: userId,
+    });
+
     return room;
   }
 
@@ -95,6 +102,14 @@ export class ChatService {
         roomName: room.name,
         participants: room.participants,
       });
+      // Also broadcast over WS so the joiner's socket gets subscribed to the
+      // room and existing members see the new participant in realtime.
+      this.safeEmit(this.chatClient, 'participants.changed', {
+        roomId: room._id,
+        participants: room.participants,
+        addedUserIds: [userId],
+        removedUserIds: [],
+      });
     }
     return room;
   }
@@ -113,15 +128,21 @@ export class ChatService {
         'Only existing participants can add new members',
       );
     }
-    let added = false;
+    const newlyAdded: string[] = [];
     for (const userId of userIds) {
       if (!room.participants.includes(userId)) {
         room.participants.push(userId);
-        added = true;
+        newlyAdded.push(userId);
       }
     }
-    if (added) {
+    if (newlyAdded.length > 0) {
       await room.save();
+      this.safeEmit(this.chatClient, 'participants.changed', {
+        roomId: room._id,
+        participants: room.participants,
+        addedUserIds: newlyAdded,
+        removedUserIds: [],
+      });
     }
     return room;
   }
@@ -139,6 +160,12 @@ export class ChatService {
       roomId: room._id,
       roomName: room.name,
     });
+    this.safeEmit(this.chatClient, 'participants.changed', {
+      roomId: room._id,
+      participants: room.participants,
+      addedUserIds: [],
+      removedUserIds: [userId],
+    });
 
     return room;
   }
@@ -151,6 +178,10 @@ export class ChatService {
     await this.chatRoomModel.deleteOne({ _id: roomId }).exec();
 
     this.safeEmit(this.notificationClient, 'room.deleted', {
+      roomId,
+      participants: room.participants,
+    });
+    this.safeEmit(this.chatClient, 'room.deleted', {
       roomId,
       participants: room.participants,
     });
@@ -194,6 +225,14 @@ export class ChatService {
       senderUsername,
       receiverEmail,
       invitationId: invitation._id,
+    });
+    this.safeEmit(this.chatClient, 'invitation.received', {
+      invitationId: invitation._id,
+      senderId,
+      senderEmail,
+      senderUsername,
+      receiverEmail,
+      createdAt: new Date().toISOString(),
     });
 
     return invitation;
@@ -270,6 +309,13 @@ export class ChatService {
     }
     await this.invitationModel.findByIdAndUpdate(invitationId, {
       status: 'rejected',
+    });
+
+    // Notify the sender (via their user-room) that the invite was rejected
+    this.safeEmit(this.chatClient, 'invitation.rejected', {
+      invitationId,
+      senderId: invitation.senderId,
+      receiverEmail: invitation.receiverEmail,
     });
   }
 

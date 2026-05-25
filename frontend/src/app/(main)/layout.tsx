@@ -14,7 +14,7 @@ import api from '@/lib/api';
 import Sidebar from '@/components/layout/Sidebar';
 import { toast } from '@/stores/toastStore';
 import { playPing, unlockAudioOnFirstInteraction } from '@/lib/sound';
-import type { Room } from '@/types';
+import type { Invitation, Room } from '@/types';
 
 interface IncomingMessage {
   messageId?: string;
@@ -137,6 +137,63 @@ export default function MainLayout({
       useChatStore.getState().markMessagesAsRead(roomId, userId);
     };
 
+    const onMessageDeleted = ({
+      roomId,
+      messageId,
+    }: {
+      roomId: string;
+      messageId: string;
+    }) => {
+      useChatStore.getState().removeMessage(roomId, messageId);
+    };
+
+    const onRoomDeleted = ({ roomId }: { roomId: string }) => {
+      const wasActive =
+        String(useChatStore.getState().activeRoomId) === String(roomId);
+      useChatStore.getState().removeRoom(roomId);
+      if (wasActive) {
+        toast.info('Room deleted', 'The room you were viewing was removed.');
+      }
+    };
+
+    const onParticipantsChanged = ({
+      roomId,
+      participants,
+    }: {
+      roomId: string;
+      participants: string[];
+      addedUserIds?: string[];
+      removedUserIds?: string[];
+    }) => {
+      useChatStore.getState().patchRoomParticipants(roomId, participants);
+    };
+
+    const onInvitationReceived = (invite: Invitation) => {
+      useChatStore.getState().upsertInvitation(invite);
+      toast.info('New invitation', `${invite.senderUsername || invite.senderEmail} invited you to chat.`);
+      playPing();
+    };
+
+    const onInvitationRejected = ({
+      invitationId,
+    }: {
+      invitationId: string;
+    }) => {
+      useChatStore.getState().removeInvitation(invitationId);
+      toast.info('Invitation declined', 'Your invitation was declined.');
+    };
+
+    const onUserTyping = ({
+      roomId,
+      userId,
+    }: {
+      roomId: string;
+      userId: string;
+    }) => {
+      if (userId === user?.id) return;
+      useChatStore.getState().markUserTyping(roomId, userId);
+    };
+
     const onPresenceUpdate = (data: { userId: string; isOnline: boolean }) => {
       if (data.isOnline) setUserOnline(data.userId);
       else setUserOffline(data.userId);
@@ -162,6 +219,12 @@ export default function MainLayout({
     chat.on('new_message', onNewMessage);
     chat.on('room_created', onRoomCreated);
     chat.on('messages_read', onMessagesRead);
+    chat.on('message_deleted', onMessageDeleted);
+    chat.on('room_deleted', onRoomDeleted);
+    chat.on('participants_changed', onParticipantsChanged);
+    chat.on('invitation_received', onInvitationReceived);
+    chat.on('invitation_rejected', onInvitationRejected);
+    chat.on('user_typing', onUserTyping);
     chat.io.on('reconnect', onChatReconnect);
 
     presence.on('presence_update', onPresenceUpdate);
@@ -173,6 +236,12 @@ export default function MainLayout({
       chat.off('new_message', onNewMessage);
       chat.off('room_created', onRoomCreated);
       chat.off('messages_read', onMessagesRead);
+      chat.off('message_deleted', onMessageDeleted);
+      chat.off('room_deleted', onRoomDeleted);
+      chat.off('participants_changed', onParticipantsChanged);
+      chat.off('invitation_received', onInvitationReceived);
+      chat.off('invitation_rejected', onInvitationRejected);
+      chat.off('user_typing', onUserTyping);
       chat.io.off('reconnect', onChatReconnect);
       presence.off('presence_update', onPresenceUpdate);
       presence.io.off('reconnect', onPresenceReconnect);

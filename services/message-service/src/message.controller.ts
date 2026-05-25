@@ -2,7 +2,10 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -79,5 +82,15 @@ export class MessageController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.messageService.markRoomAsRead(roomId, req.user.userId);
+  }
+
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteMessage(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<void> {
+    await this.messageService.deleteMessage(id, req.user.userId);
   }
 }

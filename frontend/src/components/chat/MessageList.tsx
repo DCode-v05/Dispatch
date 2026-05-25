@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { useAuthStore } from '@/stores/authStore';
 import { usePresenceStore } from '@/stores/presenceStore';
 import { deriveStatus } from '@/lib/message-status';
 import { formatDate, isDifferentDay } from '@/lib/utils';
 import type { Message } from '@/types';
+import api from '@/lib/api';
+import { toast } from '@/stores/toastStore';
 import MessageBubble from './MessageBubble';
 
 interface MessageListProps {
@@ -35,6 +37,29 @@ export default function MessageList({ roomId }: MessageListProps) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'auto' });
   }, [messages]);
+
+  const handleDelete = useCallback(
+    async (msg: Message) => {
+      const serverId = msg._id || msg.id;
+      if (!serverId || serverId.startsWith?.('local_') || serverId.startsWith?.('m_')) {
+        // Not yet persisted — just drop from local store
+        useChatStore.getState().removeMessage(roomId, msg.id);
+        return;
+      }
+      // Optimistically remove; restore on error
+      useChatStore.getState().removeMessage(roomId, msg.id);
+      try {
+        await api.delete(`/messages/${serverId}`);
+      } catch (err) {
+        console.error('delete message failed', err);
+        toast.error(
+          'Could not delete message',
+          'It will reappear on next refresh.',
+        );
+      }
+    },
+    [roomId],
+  );
 
   const items = useMemo(() => {
     const rendered: Array<
@@ -147,6 +172,9 @@ export default function MessageList({ roomId }: MessageListProps) {
                   isGrouped={item.isGrouped}
                   isGroupTail={item.isGroupTail}
                   senderName={item.senderName}
+                  onDelete={
+                    item.isOwn ? () => void handleDelete(item.msg) : undefined
+                  }
                 />
               );
             })}

@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -151,6 +152,26 @@ export class MessageService {
       .exec();
 
     this.safeEmit(this.chatClient, 'messages.read', { roomId, userId });
+  }
+
+  async deleteMessage(messageId: string, userId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(messageId)) {
+      throw new BadRequestException('messageId is not a valid id');
+    }
+    const msg = await this.messageModel.findById(messageId).exec();
+    if (!msg) throw new NotFoundException('Message not found');
+    if (msg.senderId !== userId) {
+      throw new ForbiddenException('You can only delete your own messages');
+    }
+
+    const roomId = msg.roomId;
+    await this.messageModel.deleteOne({ _id: messageId }).exec();
+
+    this.safeEmit(this.chatClient, 'message.deleted', {
+      messageId,
+      roomId,
+      senderId: userId,
+    });
   }
 
   private safeEmit(
