@@ -1,249 +1,188 @@
-# Dispatch — Real-Time Chat Platform
+# Dispatch
 
-## Project Description
-Dispatch is a production-grade real-time chat platform built on a microservices architecture and a fully automated DevOps pipeline. It supports direct messages and group rooms, live presence and typing indicators, sent/delivered/seen receipts, and push notifications — all delivered over WebSockets with sub-second latency. The system is containerized, observable end-to-end, and ships through a CI/CD pipeline to a managed cloud environment.
+**A real-time chat platform split into five NestJS microservices, wired together over RabbitMQ, and shipped through a full CI/CD and Kubernetes setup.**
 
----
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white) ![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=flat&logo=nestjs&logoColor=white) ![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat&logo=nextdotjs&logoColor=white) ![Socket.IO](https://img.shields.io/badge/Socket.IO-010101?style=flat&logo=socketdotio&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat&logo=postgresql&logoColor=white) ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat&logo=mongodb&logoColor=white) ![Redis](https://img.shields.io/badge/Redis-FF4438?style=flat&logo=redis&logoColor=white) ![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?style=flat&logo=rabbitmq&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white) ![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=flat&logo=kubernetes&logoColor=white) ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=flat&logo=githubactions&logoColor=white)
 
-## Project Details
+## Overview
 
-### Problem Statement
-Modern messaging applications must deliver messages in real time, scale horizontally under unpredictable load, stay online during partial failures, and remain observable in production. A monolithic implementation makes it hard to scale individual concerns (chat fan-out vs. authentication vs. presence) independently. Dispatch solves this by splitting responsibilities into independently deployable services, decoupling them through a message broker, and wiring the entire stack into a containerized, monitored, and continuously deployed pipeline.
+Dispatch is a chat app that I built as a distributed system rather than a single backend, mostly to learn how the pieces of a real microservices stack fit together — service decomposition, an event bus, an API gateway, container orchestration, and a deploy pipeline that ships on its own.
 
-### Architecture
-```
-Frontend (Next.js)
-        │
-        ▼
-API Gateway (NGINX)
-        │
-        ├──► User Service       (PostgreSQL)   — auth, profiles
-        ├──► Chat Service       (MongoDB)      — rooms, WebSocket gateway
-        ├──► Message Service    (MongoDB)      — message persistence, history
-        ├──► Notification Service (Redis)      — alerts, push
-        └──► Presence Service   (Redis)        — online / typing state
-                          │
-                          ▼
-                  RabbitMQ (event bus)
-```
+It handles direct messages and group rooms, live typing indicators, online/last-seen presence, sent/delivered/seen receipts, an invitation flow for adding people to rooms, and in-app notifications. Everything live travels over WebSockets. Instead of one monolith, the work is divided across five independent NestJS services, each owning its own database and talking to the others through RabbitMQ events rather than direct calls. The whole thing runs locally with one `docker compose up`, has Kubernetes manifests for a real cluster, exposes Prometheus metrics behind Grafana dashboards, and deploys to Render automatically once CI goes green.
 
-- **Service Decomposition:** Five independent NestJS services, each owning its own data store and exposing a versioned REST API plus event subscriptions on RabbitMQ.
-- **Event-Driven Communication:** Services emit and consume domain events (e.g. `message.created`, `user.online`, `room.member.joined`) over RabbitMQ rather than calling each other synchronously.
-- **WebSocket Gateway:** Chat Service hosts a Socket.IO gateway for live message delivery, typing indicators, and presence broadcasts.
-- **API Gateway:** NGINX terminates external traffic, routes `/api/*` to the correct service, and proxies `/socket.io/*` for WebSocket upgrades.
+## Key Features
 
-### Microservices
-| Service | Port | Database | Responsibility |
+- **Real-time messaging** over Socket.IO — messages, typing indicators, and presence updates pushed to everyone in a room without polling.
+- **Direct messages and group rooms** with an invitation system: send an invite, the recipient accepts or rejects, and the room is created and broadcast to all participants over the socket.
+- **Message receipts** — outgoing messages move through clock → sent → delivered → seen, with read state tracked per user (`readBy` arrays) and a "mark room as read" path.
+- **Presence and last-seen** tracking backed by Redis, plus typing indicators scoped to the current room.
+- **Authentication with account protection** — JWT auth, passwords hashed with bcrypt at 12 rounds, and brute-force lockout (5 failed logins locks the account for 15 minutes).
+- **API gateway** (NGINX) that fronts every service, handles CORS, applies per-route rate limits, and upgrades WebSocket connections to the right service by namespace.
+- **Event-driven backend** — services emit and consume domain events (`message.sent`, `invitation.received`, `room.created`, `messages.read`, `participants.changed`, `message.deleted`) over RabbitMQ instead of calling each other directly.
+- **Observability** — every service exposes `/metrics` (prom-client) and `/health` liveness/readiness checks (`@nestjs/terminus`), scraped by Prometheus and visualized in a Grafana dashboard.
+- **Auto-generated API docs** — Swagger UI per service via `@nestjs/swagger`.
+- **Full deploy story** — multi-stage Dockerfiles, a Compose stack for local dev, Kubernetes manifests (deployments, services, HPAs, ingress, secrets, PVCs), and a GitHub Actions CI/CD pipeline.
+- **A real frontend** — Next.js 16 app with sign-in/sign-up, a rooms sidebar with unread badges and last-message previews, a chat window with message grouping and date dividers, light/dark themes, and toast/modal UI.
+
+## How It Works
+
+### Service decomposition
+
+The backend is five NestJS services, each with a single responsibility and its own data store:
+
+| Service | Port | Store | Responsibility |
 |---|---|---|---|
-| User Service | 3001 | PostgreSQL | Authentication (JWT), user profiles, password hashing (bcrypt) |
-| Chat Service | 3002 | MongoDB | Chat rooms, members, Socket.IO gateway, typing/presence broadcasts |
-| Message Service | 3003 | MongoDB | Message persistence, history pagination, sent/delivered/seen receipts |
-| Notification Service | 3004 | Redis | In-app notifications, unread badges, push fan-out |
-| Presence Service | 3005 | Redis | Online/offline tracking, last-seen timestamps |
+| **user-service** | 3001 | PostgreSQL | Auth (JWT), registration, profiles, password hashing, login lockout |
+| **chat-service** | 3002 | MongoDB | Rooms, members, invitations, and the Socket.IO gateway |
+| **message-service** | 3003 | MongoDB | Message persistence, history pagination, read receipts |
+| **notification-service** | 3004 | Redis | In-app notifications and unread fan-out |
+| **presence-service** | 3005 | Redis | Online/offline state and last-seen timestamps |
 
-### DevOps & CI/CD
-- **Containerization:** Each service ships with a multi-stage hardened Dockerfile (non-root user, minimal Alpine base, production target).
-- **Local Orchestration:** `docker-compose.yml` brings up all 5 services + Postgres + MongoDB + Redis + RabbitMQ + NGINX + frontend with health checks and a shared bridge network.
-- **CI Pipeline (GitHub Actions, [.github/workflows/ci.yml](.github/workflows/ci.yml)):** lint → typecheck → unit tests → build all services in parallel on every push and pull request.
-- **CD Pipeline ([.github/workflows/cd.yml](.github/workflows/cd.yml)):** builds and pushes versioned images, then deploys to the managed cloud environment.
-- **Pre-commit Hooks:** Husky runs lint and format checks on staged files before every commit, blocking broken code at the source.
-- **Kubernetes Manifests:** Full set of manifests under [k8s/](k8s/) (deployments, services, HPAs, ingress, secrets, PVCs) for self-hosted clusters as an alternative to the managed deployment.
+The store choice follows the data: relational user records go to Postgres (via TypeORM), rooms and messages go to MongoDB (via Mongoose), and the volatile presence/notification state lives in Redis.
 
-### Configuration
-Every service is configured purely via environment variables. The hardening pass made several previously-optional variables mandatory and enforced strong defaults:
+### Request and event flow
 
-```
-# Shared
-JWT_SECRET=<32+ char secret>          # required, validated at boot
-NODE_ENV=production
-PORT=3000
+External traffic only ever hits NGINX. The gateway routes `/api/auth` and `/api/users` to user-service, `/api/rooms` and `/api/invitations` to chat-service, `/api/messages` to message-service, and so on, and proxies `/socket.io/` upgrades to the right service by inspecting the `nsp` query arg. It also enforces rate limits at the edge — 30 req/s for general API routes and a tighter 5 req/s on auth — and strips and re-adds CORS headers so the browser sees one consistent origin.
 
-# User Service
-POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
-BCRYPT_ROUNDS=12
+Services don't call each other over HTTP. When something happens, a service emits an event onto RabbitMQ and any interested service reacts. For example, sending a message:
 
-# Chat / Message Service
-MONGODB_URI=mongodb://user:pass@host:27017/chatplatform?authSource=admin
+1. The client emits `send_message` over the socket. The chat gateway validates the sender is a room participant, trims the content to a 4000-char cap, and immediately broadcasts `new_message` to everyone in the room socket-room so delivery feels instant.
+2. It then emits a `message.create` event onto the bus. The message-service consumes it, writes the message to MongoDB, and emits `message.sent` to both notification-service (for the unread badge) and back to chat-service.
+3. Read receipts work the same way — `markRoomAsRead` updates the `readBy` set and emits `messages.read`, which the chat gateway relays to the room so other clients update their seen indicators.
 
-# Notification / Presence Service
-REDIS_HOST, REDIS_PORT, REDIS_PASSWORD
+The invitation flow is also event-driven: accepting an invite emits `invitation.accepted` / `room.created`, and the chat gateway loops over connected sockets, joins the relevant participants to the new room, and emits `room_created` so their UIs update live without a refresh.
 
-# All services
-RABBITMQ_URL=amqp://user:pass@host:5672
-RATE_LIMIT_TTL=60
-RATE_LIMIT_MAX=100
-```
+### WebSocket gateway
 
-Copy `.env.example` to `.env` and fill in real values before starting the stack.
+The chat-service hosts the Socket.IO gateway. On connect, it verifies the JWT from either the handshake auth payload or the `Authorization` header, then joins the socket to a per-user channel (`user:<id>`), an email channel (used to address invitations before the recipient is in the room), and every room the user already belongs to. CORS origins are parsed from `FRONTEND_URL` with trailing slashes stripped, so a misconfigured origin doesn't silently reject the WebSocket. Disconnects are left to Socket.IO's own room cleanup.
 
-### Monitoring & Dashboards
-- **Prometheus** scrapes a `/metrics` endpoint exposed by every service (`prom-client`): request rate, latency histograms, WebSocket connection count, RabbitMQ consumer lag.
-- **Grafana** dashboards under [monitoring/grafana/dashboards/](monitoring/grafana/dashboards/) visualize the platform overview, per-service latency, error rates, and active socket connections.
-- **Health Checks:** Each service exposes `/health` (liveness) and `/health/ready` (readiness) via `@nestjs/terminus`, checking downstream dependencies (DB, broker, Redis).
-- **API Documentation:** Swagger UI auto-generated at `/docs` on every service for live request inspection.
+### Auth and hardening
 
-### Frontend Application
-The Next.js 16 frontend ([frontend/](frontend/)) implements the **"Dispatch" design system**:
-- Sign-up / sign-in with JWT, persisted via secure cookies.
-- Sidebar with rooms, live last-message previews, relative timestamps, and unread badges.
-- Chat window with auto-resizing input, typing indicator, message grouping (5-minute windows), and date dividers.
-- Sent · Delivered · Seen indicators on outgoing messages.
-- Dual light/dark theme (Space Grotesk display, DM Sans body, JetBrains Mono mono) with system-preference auto-detect and FOUC-free SSR.
-- Toast notifications and modal confirmations replacing native `alert()` / `confirm()`.
-- Settings page with theme switcher, profile, and sign-out.
+user-service handles registration and login. Passwords are hashed with bcryptjs at 12 rounds. Login tracks failed attempts: after 5 failures the account is locked for 15 minutes, and a successful login resets the counter. Each service validates its environment at boot (the JWT secret is required), and the services pull in `helmet` and `@nestjs/throttler` on top of the gateway-level rate limiting.
 
----
+### Frontend
+
+The frontend is a Next.js 16 / React 19 app using the app router, with state in Zustand stores (auth, chat, presence, theme, toast) and a thin Socket.IO client layer. It splits routes into an `(auth)` group (login, signup) and a `(main)` group (rooms list, chat room, settings). Messages are grouped into 5-minute windows with date dividers, the input auto-resizes, and the sent/delivered/seen state is rendered as transitioning check marks. Theme is light/dark/system with no flash of unstyled content on SSR.
+
+## Results / Highlights
+
+No formal benchmarks — this is a learning-grade project — but the concrete, verifiable shape of it:
+
+- **5 independent services**, 3 different datastore types (PostgreSQL, MongoDB, Redis), and a RabbitMQ event bus, all brought up by a single Compose file with health checks.
+- **CI runs a 6-package build matrix** (frontend + 5 services) in parallel on Node 22, doing lint → type-check/build → unit tests against live Postgres/Mongo/Redis/RabbitMQ service containers on every push and PR.
+- **Edge rate limiting** of 30 req/s (API) and 5 req/s (auth) with burst allowances, configured in NGINX.
+- **Brute-force protection**: bcrypt at 12 rounds, 5-attempt lockout, 15-minute cooldown.
+- **Two Horizontal Pod Autoscalers** (chat-service, message-service) in the k8s manifests, plus PVCs for each stateful database and a full ingress/secrets/configmap setup.
+- **k6 load and stress scripts** and a Postman collection included for testing the platform under load.
 
 ## Tech Stack
-- **Frontend:** Next.js 16, React 19, Tailwind CSS 4, Zustand, Socket.IO client, Axios
-- **Backend:** Node.js 22, NestJS 11, TypeORM, Mongoose, Socket.IO, Passport (JWT)
-- **Databases:** PostgreSQL 16, MongoDB 7, Redis 7
-- **Message Broker:** RabbitMQ 3.13
-- **API Gateway:** NGINX (non-root, runs on port 8080 inside container)
-- **Containerization:** Docker, Docker Compose
-- **Orchestration:** Kubernetes (manifests provided)
-- **CI/CD:** GitHub Actions
-- **Monitoring:** Prometheus + Grafana
-- **Testing:** Jest (unit + e2e), Supertest, k6 (load), Postman collections
-- **Tooling:** Husky, ESLint, Prettier, TypeScript 5
 
----
+- **Languages:** TypeScript (primary), JavaScript, plus YAML / Dockerfile / NGINX config for infra.
+- **Frontend:** Next.js 16, React 19, Tailwind CSS, Zustand, Socket.IO client, Axios.
+- **Backend:** Node.js 22, NestJS 11, Socket.IO, TypeORM (Postgres), Mongoose (MongoDB), Passport/JWT, bcryptjs, helmet, `@nestjs/throttler`, `@nestjs/swagger`, `@nestjs/terminus`.
+- **Data stores:** PostgreSQL 16, MongoDB 7, Redis 7.
+- **Messaging / gateway:** RabbitMQ 3.13 (event bus), NGINX (API gateway, non-root on 8080).
+- **Infra:** Docker + Docker Compose, Kubernetes (deployments, services, HPAs, ingress, secrets, PVCs), GitHub Actions CI/CD, Render (deploy target).
+- **Observability / testing:** Prometheus + Grafana, prom-client, Jest (unit + e2e), Supertest, k6, Postman; Husky + ESLint + Prettier for repo hygiene.
 
 ## Getting Started
 
 ### Prerequisites
-- Node.js 22+
-- Docker & Docker Compose
-- (Optional) kubectl, for the Kubernetes deployment path
 
-### 1. Clone the repository
+- Node.js 22+
+- Docker and Docker Compose
+- `kubectl` (only if you want the Kubernetes path)
+
+### Installation
+
 ```bash
 git clone https://github.com/DCode-v05/Dispatch.git
 cd Dispatch
-```
-
-### 2. Configure environment variables
-```bash
 cp .env.example .env
-# Edit .env — at minimum, set JWT_SECRET and the database / broker passwords
+# Edit .env — at minimum set JWT_SECRET and the database / broker passwords
 ```
 
-### 3. Start the full stack with Docker Compose
+### Running
+
+Bring up the whole stack — all 5 services, Postgres, MongoDB, Redis, RabbitMQ, NGINX, and the frontend:
+
 ```bash
 docker compose up -d --build
 ```
-This builds and starts every service, database, the broker, and the NGINX gateway. The application is then served at:
-- **Web app:** http://localhost
-- **Swagger docs:** http://localhost/api/users/docs, `/api/chat/docs`, `/api/messages/docs`, etc.
-- **RabbitMQ console:** http://localhost:15672 (user: `chatadmin`)
-- **Prometheus:** http://localhost:9090 (when monitoring stack is up)
-- **Grafana:** http://localhost:3010 (when monitoring stack is up)
 
-### 4. Run an individual service in dev mode
+Then:
+
+- **Web app:** http://localhost
+- **RabbitMQ console:** http://localhost:15672 (user `chatadmin`)
+- **Swagger docs:** available per service (e.g. `/api/users/docs`)
+
+To work on a single service in watch mode:
+
 ```bash
 cd services/user-service
 npm install
 npm run start:dev
 ```
 
-### 5. Start the monitoring stack (optional)
+Optional — start the monitoring stack (Prometheus + Grafana):
+
 ```bash
 docker compose -f monitoring/docker-compose.monitoring.yml up -d
 ```
 
-### 6. Deploy to Kubernetes (optional)
+Optional — deploy to a Kubernetes cluster:
+
 ```bash
 kubectl apply -f k8s/namespace.yaml
 kubectl apply -R -f k8s/
 ```
 
----
-
 ## Usage
-- **Sign up** at `/signup`, then sign in to receive a JWT cookie.
-- **Create or join a room** from the Rooms page, or open a direct message from a user's profile.
-- **Send messages** — watch the indicator transition from clock → single check → double check (dim) → double check (accent) as the message reaches sent / delivered / seen states.
-- **Switch theme** from the Settings page (light / dark / system).
-- **Inspect APIs** via Swagger at `/docs` on each service for live request testing.
-- **Load test** with the k6 scripts and Postman collection under [testing/](testing/).
 
----
+Sign up, then sign in to get a JWT. From the rooms page, create or open a room (or accept an invitation someone sent you). Send a message and watch the indicator move from clock to single check to double check as it goes sent → delivered → seen. Typing shows up live for the other people in the room, and presence dots reflect who's online. Theme switching lives on the settings page. For load testing, the k6 scripts and Postman collection are under `testing/`, and each service's Swagger UI lets you poke the REST API directly.
 
 ## Project Structure
+
 ```
 Dispatch/
-│
-├── frontend/                        # Next.js 16 frontend (Dispatch design system)
-│   ├── src/app/                     # App router pages (auth + main)
-│   ├── src/components/              # UI + chat + layout components
-│   ├── src/stores/                  # Zustand stores (chat, theme, toast, presence)
-│   └── src/lib/                     # API client, socket client, helpers
+├── frontend/                     # Next.js 16 app (app router, Zustand stores, Socket.IO client)
+│   └── src/
+│       ├── app/                  # (auth) and (main) route groups
+│       ├── components/           # chat / layout / ui components
+│       ├── stores/               # auth, chat, presence, theme, toast
+│       └── lib/                  # api client, socket, helpers
 │
 ├── services/
-│   ├── user-service/                # Auth, profiles (PostgreSQL)
-│   ├── chat-service/                # Rooms + Socket.IO gateway (MongoDB)
-│   ├── message-service/             # Message persistence (MongoDB)
-│   ├── notification-service/        # Notifications (Redis)
-│   └── presence-service/            # Online tracking (Redis)
+│   ├── user-service/             # auth, profiles, login lockout (PostgreSQL)
+│   ├── chat-service/             # rooms, invitations, Socket.IO gateway (MongoDB)
+│   ├── message-service/          # message persistence + receipts (MongoDB)
+│   ├── notification-service/     # in-app notifications (Redis)
+│   └── presence-service/         # online / last-seen (Redis)
 │
-├── gateway/                         # NGINX configuration + Dockerfile
-├── k8s/                             # Kubernetes manifests
-│   ├── namespace.yaml
-│   ├── databases/                   # Postgres, MongoDB, Redis
-│   ├── rabbitmq/
-│   ├── services/                    # Deployments + Services for each microservice
-│   ├── frontend/
-│   ├── gateway/
-│   ├── hpa/                         # Horizontal Pod Autoscalers
-│   ├── ingress/
-│   ├── configmaps/
-│   └── secrets/
+├── gateway/                      # NGINX config (routing, CORS, rate limits) + Dockerfile
+├── k8s/                          # Kubernetes manifests
+│   ├── databases/                # Postgres, MongoDB, Redis deployments + PVCs
+│   ├── services/                 # per-service deployments + services
+│   ├── hpa/                      # chat + message autoscalers
+│   ├── ingress/  configmaps/  secrets/  rabbitmq/  frontend/  gateway/
+│   └── namespace.yaml
 │
-├── monitoring/                      # Prometheus + Grafana stack
-│   ├── prometheus/prometheus.yml
-│   ├── grafana/dashboards/
-│   └── docker-compose.monitoring.yml
-│
-├── testing/
-│   ├── integration/                 # docker-compose for integration tests
-│   └── postman/                     # Postman collection + environment
-│
-├── .github/workflows/               # CI + CD pipelines
-│   ├── ci.yml
-│   └── cd.yml
-│
-├── scripts/                         # Monorepo helper scripts
-├── docker-compose.yml               # Local development stack
-├── docker-compose.override.yml      # Dev overrides
-├── .env.example                     # Environment variable template
-├── package.json                     # Root tooling (Husky)
-└── README.md                        # Project documentation
+├── monitoring/                   # Prometheus + Grafana (dashboards, datasource, compose)
+├── testing/                      # k6 load/stress scripts, Postman collection, integration compose
+├── .github/workflows/            # ci.yml (build matrix) + cd.yml (Render deploy hooks)
+├── scripts/run-in-each.js        # monorepo helper: run a script in every package
+├── docker-compose.yml            # local dev stack
+└── package.json                  # root tooling (Husky pre-commit)
 ```
-
----
-
-## Contributing
-
-Contributions are welcome! To contribute:
-1. Fork the repository
-2. Create a new branch:
-   ```bash
-   git checkout -b feature/your-feature
-   ```
-3. Commit your changes:
-   ```bash
-   git commit -m "Add your feature"
-   ```
-4. Push to your branch:
-   ```bash
-   git push origin feature/your-feature
-   ```
-5. Open a pull request describing your changes.
-
-Please make sure `npm run lint:all` and `npm run test:all` pass at the repo root before opening the PR — Husky will enforce this on commit.
 
 ---
 
 ## Contact
-- **GitHub:** [DCode-v05](https://github.com/DCode-v05)
-- **Email:** denistanb05@gmail.com
+
+**Portfolio:** [Denistan](https://www.denistan.me)<br>
+**LinkedIn:** [Denistan](https://www.linkedin.com/in/denistanb)<br>
+**GitHub:** [DCode-v05](https://github.com/DCode-v05)<br>
+**LeetCode:** [Denistan_B](https://leetcode.com/u/Denistan_B)<br>
+**Email:** [denistanb05@gmail.com](mailto:denistanb05@gmail.com)
+
+Made with ❤️ by **Denistan B**
