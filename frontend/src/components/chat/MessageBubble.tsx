@@ -13,16 +13,9 @@ interface MessageBubbleProps {
   isGrouped?: boolean;
   isGroupTail?: boolean;
   senderName?: string;
-  /** If set, a trash icon appears on hover and calls this when clicked. */
   onDelete?: () => void;
 }
 
-/**
- * Layout convention:
- *   • Sent (own) bubbles align to the RIGHT edge of the conversation column.
- *   • Received bubbles align to the LEFT edge, with the sender's avatar
- *     flush to the LEFT of the bubble.
- */
 export default function MessageBubble({
   message,
   isOwn,
@@ -35,7 +28,6 @@ export default function MessageBubble({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const time = formatTime(message.timestamp || message.createdAt || '');
 
-  // Bubble tail is cut on the side adjacent to the alignment edge.
   const ownShape = isGrouped
     ? 'rounded-2xl rounded-tr-md'
     : 'rounded-2xl rounded-tr-sm';
@@ -82,7 +74,6 @@ export default function MessageBubble({
         isOwn ? 'justify-end' : 'justify-start'
       } ${isGrouped ? 'mt-0.5' : 'mt-3'}`}
     >
-      {/* Received: avatar to the LEFT of the bubble (only on group tail) */}
       {!isOwn && (
         <div className={`w-9 shrink-0 ${isGroupTail ? '' : 'invisible'}`}>
           {isGroupTail && (
@@ -107,7 +98,6 @@ export default function MessageBubble({
         )}
 
         <div className="relative flex items-center gap-1.5">
-          {/* Delete action — only own messages with an onDelete handler */}
           {isOwn && onDelete && (
             <>
               {confirmingDelete ? (

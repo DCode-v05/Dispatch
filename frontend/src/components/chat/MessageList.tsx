@@ -42,11 +42,9 @@ export default function MessageList({ roomId }: MessageListProps) {
     async (msg: Message) => {
       const serverId = msg._id || msg.id;
       if (!serverId || serverId.startsWith?.('local_') || serverId.startsWith?.('m_')) {
-        // Not yet persisted — just drop from local store
         useChatStore.getState().removeMessage(roomId, msg.id);
         return;
       }
-      // Optimistically remove; restore on error
       useChatStore.getState().removeMessage(roomId, msg.id);
       try {
         await api.delete(`/messages/${serverId}`);
@@ -91,7 +89,6 @@ export default function MessageList({ roomId }: MessageListProps) {
       }
 
       const isOwn = msg.senderId === user?.id;
-      // "Grouped" = previous message is from the same sender AND within 5 min AND same day
       const sameDay = !isDifferentDay(prevTs, ts);
       const sameSender = prev && prev.senderId === msg.senderId;
       const closeInTime =
@@ -100,7 +97,6 @@ export default function MessageList({ roomId }: MessageListProps) {
           : false;
       const isGrouped = !!(sameDay && sameSender && closeInTime);
 
-      // "Group tail" = the next message is from a different sender or far away
       const nextSameSender = next && next.senderId === msg.senderId;
       const nextTs = next?.timestamp || next?.createdAt;
       const nextClose =

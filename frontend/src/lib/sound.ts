@@ -1,13 +1,5 @@
 'use client';
 
-/**
- * Notification sound — synthesized via Web Audio API so we don't ship audio files.
- * A pleasant two-tone "ding" (~250ms).
- *
- * Browsers block audio until the user has interacted with the page; we lazily
- * create the AudioContext and `resume()` it on first interaction.
- */
-
 let ctx: AudioContext | null = null;
 let unlocked = false;
 
@@ -24,10 +16,6 @@ function ensureContext(): AudioContext | null {
   return ctx;
 }
 
-/**
- * Wire this up once on app mount — installs one-shot listeners that "unlock"
- * audio on the first user interaction so subsequent `playPing()` calls work.
- */
 export function unlockAudioOnFirstInteraction(): () => void {
   if (typeof window === 'undefined') return () => {};
   if (unlocked) return () => {};
@@ -55,7 +43,6 @@ export function playPing(): void {
   const c = ensureContext();
   if (!c) return;
   if (c.state === 'suspended') {
-    // Not yet unlocked by user interaction. Try to resume silently.
     c.resume().catch(() => {});
   }
   try {
@@ -83,6 +70,5 @@ export function playPing(): void {
     osc2.start(now + 0.09);
     osc2.stop(now + 0.28);
   } catch {
-    // Audio errors should never break the app
   }
 }

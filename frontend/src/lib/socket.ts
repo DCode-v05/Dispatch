@@ -41,7 +41,6 @@ function attachLifecycleLogging(name: string, socket: Socket): Socket {
     socket.disconnect();
   });
   socket.io.on('reconnect_attempt', () => {
-    // Refresh the token before every reconnect attempt — it may have rotated
     const token = getValidToken();
     socket.auth = { token };
   });

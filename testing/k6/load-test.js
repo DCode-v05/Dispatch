@@ -52,16 +52,13 @@ export default function (data) {
     Authorization: `Bearer ${data.token}`,
   };
 
-  // Test 1: GET rooms
   const roomsRes = http.get(`${BASE_URL}/api/rooms`, { headers });
   check(roomsRes, { 'get rooms 200': (r) => r.status === 200 });
   errorRate.add(roomsRes.status !== 200);
 
-  // Test 2: GET health
   const healthRes = http.get(`${BASE_URL}/health`);
   check(healthRes, { 'gateway healthy': (r) => r.status === 200 });
 
-  // Test 3: GET user profile
   const profileRes = http.get(`${BASE_URL}/api/users/me`, { headers });
   check(profileRes, { 'get profile 200': (r) => r.status === 200 });
   errorRate.add(profileRes.status !== 200);

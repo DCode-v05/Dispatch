@@ -2,7 +2,6 @@ export function formatTime(dateStr: string): string {
   if (!dateStr) return '';
   const date = new Date(dateStr);
   if (isNaN(date.getTime())) return '';
-  // Force a stable 12-hour format with lowercase am/pm regardless of browser locale
   return date
     .toLocaleTimeString('en-US', {
       hour: 'numeric',
@@ -27,10 +26,6 @@ export function formatDate(dateStr: string): string {
   });
 }
 
-/**
- * "5m" / "2h" / "yesterday" / "Mon" / "Mar 4"
- * Compact label for sidebar last-message timestamps.
- */
 export function formatRelative(dateStr: string | undefined): string {
   if (!dateStr) return '';
   const date = new Date(dateStr);
@@ -70,7 +65,6 @@ export function getInitials(name: string): string {
     .slice(0, 2);
 }
 
-/** Returns true if two dates fall on different calendar days. */
 export function isDifferentDay(a: string | undefined, b: string | undefined): boolean {
   if (!a || !b) return true;
   const da = new Date(a);

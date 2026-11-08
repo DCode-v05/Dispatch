@@ -28,10 +28,6 @@ const statusSize = {
   xl: 'h-4 w-4 -bottom-0.5 -right-0.5',
 };
 
-/**
- * Map a string → deterministic hue (0..360) so each user gets a stable color.
- * Two-tone gradients are built from this hue.
- */
 function hueFromString(input: string): number {
   let hash = 0;
   for (let i = 0; i < input.length; i++) {

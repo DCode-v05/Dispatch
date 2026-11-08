@@ -7,13 +7,6 @@ interface MessageStatusProps {
   isOwn: boolean;
 }
 
-/**
- * Pending → Sent → Delivered → Seen
- *   pending   = clock icon
- *   sent      = single check
- *   delivered = double check (dimmed)
- *   seen      = double check (accent color)
- */
 export default function MessageStatus({ status, isOwn }: MessageStatusProps) {
   if (!isOwn) return null;
 
@@ -41,7 +34,6 @@ export default function MessageStatus({ status, isOwn }: MessageStatusProps) {
     );
   }
 
-  // delivered / seen — double check
   const isSeen = status === 'seen';
   return (
     <svg

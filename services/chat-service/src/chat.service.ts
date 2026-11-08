@@ -45,7 +45,6 @@ export class ChatService {
       createdBy: userId,
     });
 
-    // Tell the chat-gateway so it can notify (and subscribe) other participants
     this.safeEmit(this.chatClient, 'room.created', {
       roomId: room._id,
       participants: room.participants,
@@ -102,8 +101,6 @@ export class ChatService {
         roomName: room.name,
         participants: room.participants,
       });
-      // Also broadcast over WS so the joiner's socket gets subscribed to the
-      // room and existing members see the new participant in realtime.
       this.safeEmit(this.chatClient, 'participants.changed', {
         roomId: room._id,
         participants: room.participants,
@@ -311,7 +308,6 @@ export class ChatService {
       status: 'rejected',
     });
 
-    // Notify the sender (via their user-room) that the invite was rejected
     this.safeEmit(this.chatClient, 'invitation.rejected', {
       invitationId,
       senderId: invitation.senderId,

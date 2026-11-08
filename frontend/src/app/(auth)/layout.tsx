@@ -3,9 +3,7 @@ import ThemeToggle from '@/components/ui/ThemeToggle';
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex relative overflow-hidden bg-(--canvas)">
-      {/* Decorative side — visible on lg+ */}
       <div className="hidden lg:flex relative w-1/2 flex-col justify-between p-12 overflow-hidden bg-(--brand-bg)">
-        {/* Layered gradient accent */}
         <div
           aria-hidden
           className="absolute inset-0 opacity-90"
@@ -65,7 +63,6 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
       </div>
 
-      {/* Form side */}
       <div className="flex-1 flex items-center justify-center p-6 sm:p-12 relative">
         <div className="absolute top-6 right-6 z-10">
           <ThemeToggle />

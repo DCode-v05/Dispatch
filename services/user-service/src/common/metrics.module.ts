@@ -46,7 +46,6 @@ function metricsMiddleware(
           : undefined) ??
         req.path ??
         'unknown';
-      // Skip /metrics from its own metrics to avoid cardinality noise
       if (route === '/metrics') return;
       const labels = {
         method: req.method,
@@ -57,7 +56,6 @@ function metricsMiddleware(
       httpRequestDuration.observe(labels, seconds);
       httpRequestsTotal.inc(labels);
     } catch {
-      // never break the response on metrics failure
     }
   });
   next();

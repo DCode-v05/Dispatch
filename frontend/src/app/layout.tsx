@@ -30,7 +30,6 @@ export const metadata: Metadata = {
   description: 'A modern realtime messaging platform',
 };
 
-// Avoid flash of unstyled theme — inline script runs before React hydration
 const themeInitScript = `
 (function() {
   try {

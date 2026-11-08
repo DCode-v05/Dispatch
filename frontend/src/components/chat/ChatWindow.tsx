@@ -121,7 +121,6 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
 
   return (
     <div className="flex-1 flex flex-col h-full bg-(--canvas) overflow-hidden relative z-10">
-      {/* Header */}
       <div className="px-6 py-3.5 bg-(--surface)/85 backdrop-blur-md border-b border-(--line) flex items-center justify-between z-20 shadow-soft">
         <div className="flex items-center gap-3 min-w-0">
           <button
@@ -236,14 +235,12 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
         </div>
       </div>
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto scroll-smooth">
         <div className="max-w-3xl mx-auto h-full">
           <MessageList roomId={roomId} />
         </div>
       </div>
 
-      {/* Footer */}
       <div className="bg-(--surface) border-t border-(--line) px-4 py-3 z-10">
         <div className="max-w-3xl mx-auto">
           <TypingIndicator roomId={roomId} />
@@ -251,7 +248,6 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
         </div>
       </div>
 
-      {/* Add member modal */}
       <Modal
         isOpen={showAddMemberModal}
         onClose={() => setShowAddMemberModal(false)}
@@ -289,7 +285,6 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
         </div>
       </Modal>
 
-      {/* Delete confirmation */}
       <Modal
         isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}

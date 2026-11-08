@@ -38,7 +38,6 @@ export const useToastStore = create<ToastState>((set, get) => ({
   dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));
 
-// Convenience helpers
 export const toast = {
   success: (title: string, description?: string) =>
     useToastStore.getState().push({ kind: 'success', title, description }),

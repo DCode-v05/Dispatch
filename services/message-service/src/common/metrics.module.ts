@@ -62,7 +62,6 @@ function metricsMiddleware(
       httpRequestDuration.observe(labels, seconds);
       httpRequestsTotal.inc(labels);
     } catch {
-      // never break the response on metrics failure
     }
   });
   next();

@@ -44,7 +44,6 @@ describe('AuthService', () => {
     notificationClient = {
       emit: jest.fn().mockReturnValue({
         subscribe: ({ error }: { error?: (e: Error) => void }) => {
-          // immediately invoke success — no error
           void error;
         },
       }),
@@ -79,7 +78,6 @@ describe('AuthService', () => {
       const createArg = userService.create.mock.calls[0][0];
       expect(createArg.email).toBe('bob@example.com');
       expect(createArg.username).toBe('bob');
-      // Password must be hashed, not stored plain
       expect(createArg.password).not.toBe('Bobpass1');
       expect(await bcrypt.compare('Bobpass1', createArg.password!)).toBe(true);
 
@@ -91,7 +89,6 @@ describe('AuthService', () => {
         }),
       );
 
-      // result must not leak the hashed password
       expect((result as { password?: string }).password).toBeUndefined();
     });
 
@@ -172,7 +169,6 @@ describe('AuthService', () => {
         }),
       ).rejects.toBeInstanceOf(UnauthorizedException);
 
-      // Should not even check password / count this as a failed attempt
       expect(userService.recordFailedLogin).not.toHaveBeenCalled();
     });
 

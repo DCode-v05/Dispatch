@@ -21,10 +21,6 @@ import { User } from '../src/user/user.entity';
 process.env.JWT_SECRET = 'e2e-test-secret-must-be-at-least-32-chars-long';
 process.env.NODE_ENV = 'test';
 
-/**
- * In-memory Repository<User> just barely TypeORM-shaped to exercise the auth flow
- * through real controllers + DTOs + ValidationPipe + bcrypt + JWT.
- */
 function makeFakeUserRepo() {
   const rows = new Map<string, User>();
   const byEmail = new Map<string, string>();

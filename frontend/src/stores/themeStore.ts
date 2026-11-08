@@ -41,7 +41,6 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
         localStorage.setItem(STORAGE_KEY, mode);
       }
     } catch {
-      /* localStorage unavailable */
     }
     set({ mode, resolved });
   },
@@ -53,14 +52,12 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw === 'light' || raw === 'dark') saved = raw;
     } catch {
-      /* localStorage unavailable */
     }
 
     const resolved = resolveTheme(saved);
     applyTheme(resolved);
     set({ mode: saved, resolved });
 
-    // Subscribe to system theme changes while mode === 'system'
     const mql = window.matchMedia('(prefers-color-scheme: dark)');
     const handler = () => {
       if (get().mode === 'system') {

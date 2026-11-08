@@ -25,7 +25,6 @@ export default function ChatRoomPage({
     const socket = getChatSocket();
     socket.emit('join_room', { roomId });
 
-    // Use latest store state so we don't capture stale messages map in closure
     const hasHistory = !!useChatStore.getState().messages[roomId];
 
     if (!hasHistory) {
@@ -47,8 +46,6 @@ export default function ChatRoomPage({
       socket.emit('leave_room', { roomId });
       setActiveRoom(null);
     };
-    // Intentionally NOT depending on `messages` — every incoming socket message
-    // would otherwise re-run this effect and cause re-fetch loops.
   }, [roomId, setActiveRoom, setMessages]);
 
   if (!roomId) {

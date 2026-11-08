@@ -47,11 +47,9 @@ export class PresenceService {
   async setOffline(userId: string, socketId?: string): Promise<boolean> {
     try {
       const key = `presence:${userId}`;
-      // Only clear if the socketId matches (avoids race when user has multiple connections)
       if (socketId) {
         const current = await this.redis.hget(key, 'socketId');
         if (current && current !== socketId) {
-          // A newer connection took over; don't tear down presence
           return false;
         }
       }

@@ -9,17 +9,15 @@ const MESSAGE_URL  = process.env.NEXT_PUBLIC_MESSAGE_URL  || FALLBACK;
 const NOTIF_URL    = process.env.NEXT_PUBLIC_NOTIF_URL    || FALLBACK;
 const PRESENCE_URL = process.env.NEXT_PUBLIC_PRESENCE_URL || FALLBACK;
 
-const DEFAULT_TIMEOUT_MS = 35_000; // > Render free-tier cold start (~30s)
+const DEFAULT_TIMEOUT_MS = 35_000;
 const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 500;
 
 function shouldRetry(err: AxiosError, attempt: number): boolean {
   if (attempt >= MAX_RETRIES) return false;
-  // Don't retry mutations beyond 1 attempt to avoid duplicates
   const method = (err.config?.method ?? 'get').toLowerCase();
   const isIdempotent = ['get', 'head', 'options'].includes(method);
   if (!isIdempotent && attempt >= 1) return false;
-  // Retry on network errors, timeouts, or 502/503/504 (typical cold-start signal)
   if (!err.response) return true;
   return [502, 503, 504].includes(err.response.status);
 }
@@ -60,7 +58,6 @@ function makeClient(baseURL: string): AxiosInstance {
         return Promise.reject(error);
       }
 
-      // Retry on transient errors with exponential backoff
       const config = error.config as
         | (AxiosRequestConfig & { __retryCount?: number })
         | undefined;

@@ -1,12 +1,4 @@
 #!/usr/bin/env node
-/**
- * Runs an npm script in every workspace (5 services + frontend).
- * Usage: node scripts/run-in-each.js <script-name> [-- extra args]
- *
- * Example:
- *   node scripts/run-in-each.js lint
- *   node scripts/run-in-each.js test -- --passWithNoTests
- */
 
 const { spawnSync } = require('child_process');
 const path = require('path');

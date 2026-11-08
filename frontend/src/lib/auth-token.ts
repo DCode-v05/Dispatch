@@ -42,10 +42,6 @@ export function isTokenExpired(token: string, clockSkewSeconds = 30): boolean {
   return payload.exp - clockSkewSeconds <= nowSeconds;
 }
 
-/**
- * Returns the current token if it's valid and not near expiry.
- * Otherwise clears the cookie and returns null.
- */
 export function getValidToken(): string | null {
   const token = getToken();
   if (!token) return null;

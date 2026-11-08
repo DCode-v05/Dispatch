@@ -225,7 +225,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
 
   return (
     <div className="h-full bg-(--surface) border-r border-(--line) flex flex-col overflow-hidden">
-      {/* Header */}
       <div className="p-4 border-b border-(--line-soft) flex items-center justify-between gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="h-9 w-9 rounded-xl bg-(--accent) flex items-center justify-center shrink-0">
@@ -267,7 +266,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
         </div>
       </div>
 
-      {/* Search */}
       <div className="px-4 pt-3 pb-2">
         <div className="relative">
           <input
@@ -289,7 +287,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
         </div>
       </div>
 
-      {/* Lists */}
       <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-1">
         {invitations.length > 0 && (
           <div className="mt-2 mb-3">
@@ -382,7 +379,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
         )}
       </div>
 
-      {/* User footer */}
       <div className="p-3 border-t border-(--line-soft) flex items-center gap-2">
         <button
           onClick={() => navigateTo('/settings')}
@@ -415,7 +411,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
         </button>
       </div>
 
-      {/* Invite modal */}
       <Modal
         isOpen={showInviteModal}
         onClose={() => setShowInviteModal(false)}
@@ -460,7 +455,6 @@ export default function Sidebar({ onClose }: SidebarProps) {
         </form>
       </Modal>
 
-      {/* Logout modal */}
       <Modal
         isOpen={showLogoutModal}
         onClose={() => setShowLogoutModal(false)}

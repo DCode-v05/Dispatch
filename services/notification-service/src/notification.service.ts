@@ -12,7 +12,7 @@ export interface NotificationRecord {
 
 const MAX_NOTIFICATIONS_PER_USER = 100;
 const MAX_RETURNED = 50;
-const TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
+const TTL_SECONDS = 60 * 60 * 24 * 30;
 
 @Injectable()
 export class NotificationService {
@@ -48,7 +48,6 @@ export class NotificationService {
         try {
           out.push(JSON.parse(item));
         } catch {
-          // skip corrupted entries
         }
       }
       return out;
@@ -72,7 +71,6 @@ export class NotificationService {
             return;
           }
         } catch {
-          // skip
         }
       }
     } catch (err) {

@@ -32,8 +32,6 @@ const MAX_MESSAGE_LENGTH = 4000;
 function corsOrigin(): string | string[] | boolean {
   const v = process.env.FRONTEND_URL;
   if (!v) return process.env.NODE_ENV === 'production' ? false : true;
-  // Strip any trailing slashes — browsers send Origin without one, so a
-  // mismatched FRONTEND_URL like "https://app.x/" would silently reject WS.
   return v
     .split(',')
     .map((s) => s.trim().replace(/\/+$/, ''))
@@ -79,7 +77,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       socketData.userId = payload.sub;
       socketData.email = payload.email;
 
-      // Per-user channel (used for invitations addressed to this user)
       await client.join(`user:${payload.sub}`);
       if (payload.email) await client.join(emailRoom(payload.email));
 
@@ -98,7 +95,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   handleDisconnect(_client: Socket) {
-    // Socket.IO cleans up room memberships automatically.
   }
 
   @SubscribeMessage('send_message')
@@ -226,7 +222,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       createdBy: string;
     },
   ) {
-    // Subscribe every connected participant to the new room and emit room_created
     const sockets = await this.server.fetchSockets();
     for (const socket of sockets) {
       const socketData = socket.data as Partial<SocketData>;
@@ -264,10 +259,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       removedUserIds?: string[];
     },
   ) {
-    // Broadcast to everyone currently in the room socket-room
     this.server.to(data.roomId).emit('participants_changed', data);
 
-    // Pull in any newly-added users to the room channel
     if (data.addedUserIds && data.addedUserIds.length > 0) {
       const sockets = await this.server.fetchSockets();
       for (const socket of sockets) {
@@ -288,7 +281,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @Payload() data: { roomId: string; participants?: string[] },
   ) {
     this.server.to(data.roomId).emit('room_deleted', { roomId: data.roomId });
-    // Detach all sockets from the now-defunct room
     const sockets = await this.server.in(data.roomId).fetchSockets();
     for (const socket of sockets) {
       socket.leave(data.roomId);

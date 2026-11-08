@@ -61,7 +61,6 @@ export default function MainLayout({
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    /** Refetch rooms+invitations and re-seed presence — used on initial mount AND on socket reconnect. */
     const refreshState = async () => {
       try {
         const [{ data: rooms }, { data: invitations }] = await Promise.all([
@@ -71,7 +70,6 @@ export default function MainLayout({
         setRooms(rooms);
         setInvitations(invitations);
 
-        // Collect every participant id (excluding self) and seed presence
         const participantIds = new Set<string>();
         for (const r of rooms ?? []) {
           for (const p of r.participants ?? []) {
@@ -119,7 +117,6 @@ export default function MainLayout({
       const fromSelf = normalized.senderId === user?.id;
       addMessage(normalized.roomId, normalized, { fromSelf });
 
-      // Ping on inbound messages when room not actively visible
       if (!fromSelf) {
         const activeRoom = useChatStore.getState().activeRoomId;
         const inActive = String(activeRoom) === String(normalized.roomId);
@@ -200,7 +197,7 @@ export default function MainLayout({
     };
 
     const onNotification = (n: { type?: string; message?: string }) => {
-      if (n?.type === 'new_message') return; // already surfaced via chat
+      if (n?.type === 'new_message') return;
       if (n?.message) {
         toast.info('New notification', n.message);
         playPing();
@@ -278,7 +275,6 @@ export default function MainLayout({
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 relative">
-        {/* Mobile header */}
         <div className="md:hidden flex items-center px-3 py-2 border-b border-(--line) bg-(--surface) gap-2">
           <button
             onClick={() => setSidebarOpen(true)}

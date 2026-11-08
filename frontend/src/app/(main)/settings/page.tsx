@@ -35,7 +35,6 @@ export default function SettingsPage() {
           </p>
         </div>
 
-        {/* Profile */}
         <section className="card p-6 animate-fade-in-up">
           <div className="flex items-center gap-5">
             <Avatar
@@ -59,7 +58,6 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* Appearance */}
         <section className="card p-6 animate-fade-in-up">
           <div className="flex items-start justify-between gap-4 mb-5">
             <div>
@@ -77,7 +75,6 @@ export default function SettingsPage() {
           <ThemeToggle variant="segmented" />
         </section>
 
-        {/* Notifications (placeholder) */}
         <section className="card p-6 animate-fade-in-up">
           <h2 className="font-display text-lg font-bold tracking-tight text-(--ink) mb-2">
             Notifications
@@ -115,7 +112,6 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* Danger zone */}
         <section className="card p-6 animate-fade-in-up border-(--danger)/20">
           <h2 className="font-display text-lg font-bold tracking-tight text-(--danger) mb-2">
             Sign out

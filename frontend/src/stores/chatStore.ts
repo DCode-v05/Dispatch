@@ -8,7 +8,6 @@ interface ChatState {
   rooms: Room[];
   activeRoomId: string | null;
   messages: Record<string, Message[]>;
-  /** Per-room count of incoming messages received while the room was NOT active. */
   unread: Record<string, number>;
   typingUsers: Record<string, string[]>;
   invitations: Invitation[];
@@ -72,7 +71,6 @@ export const useChatStore = create<ChatState>((set) => ({
   addMessage: (roomId, message, opts) =>
     set((state) => {
       const existing = state.messages[roomId] ?? [];
-      // De-dup: if a permanent _id arrives, drop any local-id copy of the same content+sender
       const filtered = message._id
         ? existing.filter(
             (m) =>
@@ -100,8 +98,6 @@ export const useChatStore = create<ChatState>((set) => ({
         (m) => m.id !== messageId && m._id !== messageId,
       );
       if (next.length === existing.length) return state;
-      // If we removed the last message, refresh that room's preview from
-      // whatever new tail remains. If no messages left, clear preview fields.
       const tail = next[next.length - 1];
       const rooms = state.rooms.map((r) => {
         if (String(r._id || r.id) !== String(roomId)) return r;
@@ -161,7 +157,6 @@ export const useChatStore = create<ChatState>((set) => ({
         typingUsers: { ...state.typingUsers, [roomId]: [...current, userId] },
       };
     });
-    // Auto-clear after idle window. Re-typing resets the timer.
     const key = `${roomId}::${userId}`;
     const existing = typingTimers.get(key);
     if (existing) clearTimeout(existing);
@@ -242,7 +237,6 @@ export const useChatStore = create<ChatState>((set) => ({
     set((s) => ({ unread: { ...s.unread, [roomId]: 0 } })),
 }));
 
-// Selector helpers
 export const selectLastMessagePreview = (roomId: string) => {
   const { messages, rooms } = useChatStore.getState();
   const list = messages[roomId];

@@ -61,7 +61,6 @@ export class NotificationGateway
   }
 
   handleDisconnect(_client: Socket): void {
-    // Socket.IO handles room cleanup automatically.
   }
 
   sendToUser(userId: string, notification: NotificationRecord): void {

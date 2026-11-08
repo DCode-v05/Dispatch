@@ -31,7 +31,6 @@ function ackOrNack(context: RmqContext, success: boolean): void {
   if (success) {
     channel.ack(originalMsg);
   } else {
-    // requeue=false so we don't loop on poison messages
     channel.nack(originalMsg, false, false);
   }
 }
@@ -199,8 +198,6 @@ export class NotificationController {
         senderEmail: data.senderEmail,
         invitationId: data.invitationId,
       });
-      // Receiver is identified by email — we don't have userId, so this is broadcast-only via gateway.
-      // Store by email-based key fallback.
       await this.notificationService.addNotification(
         `email:${data.receiverEmail}`,
         notification,
